@@ -1,0 +1,51 @@
+# Using the tfjs-layers speech-command pipeline
+
+## 1. Convert the wav file from the speech-command dataset
+
+For example:
+
+```sh
+python prep_wav.py \
+    path/to/speech_command_data/three \
+    path/to/converted/data/three
+```
+
+Under the output path (i.e., `path/to/converted/data/three` in this example),
+there will be subfolders such as `0` and `1`, which contain a number of
+`.dat` files. These files can be uploaded into the browser for conversion in
+the next c  onversion step.
+
+## 2. Run the .dat file through the browser FFT
+
+Start your HTTP server:
+
+```sh
+yarn && yarn watch
+```
+
+Navigate to `http://localhost:8080`.
+
+Click the "Choose Files" button to select the .dat files in one of the folders
+generated with `prep_wav.py` in step 1. At the end of the conversion, you will
+get a downloaded .dat file. This file contains the spectrograms from all the
+files you selected.
+
+### Running inference with a pre-trained model
+
+Click the "Load pretrained model" button to load a pretrained Keras model as
+a tf.Model. This assumes the path you entered in the Model URL input box is
+valid. You may need to manually copy some files into this directory for this
+to work.
+
+### Inspecting the spectrograms from the browser
+
+You can use `show_spectrogram.py` to inspect the spectrograms in the combined
+.dat file. For example:
+
+```sh
+python show_spectrogram.py "${HOME}/Downloads/combined.dat"
+```
+
+## 3. Training Keras model using the browser-generated data files
+
+TODO(cais): Write this.

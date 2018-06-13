@@ -1,0 +1,14 @@
+{
+  "name": "tfjs-speech-command",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "license": "Apache-2.0",
+  "private": true,
+  "scripts": {
+    "watch": "http-server ."
+  },
+  "devDependencies": {
+    "http-server": "~0.11.1"
+  }
+}
