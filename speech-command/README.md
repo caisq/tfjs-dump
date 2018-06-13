@@ -13,7 +13,7 @@ python prep_wav.py \
 Under the output path (i.e., `path/to/converted/data/three` in this example),
 there will be subfolders such as `0` and `1`, which contain a number of
 `.dat` files. These files can be uploaded into the browser for conversion in
-the next c  onversion step.
+the next conversion step.
 
 ## 2. Run the .dat file through the browser FFT
 
