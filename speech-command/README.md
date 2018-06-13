@@ -1,6 +1,6 @@
 # Using the tfjs-layers speech-command pipeline
 
-## 1. Convert the wav file from the speech-command dataset
+## 1. Convert the .wav files from the speech-command dataset
 
 For example:
 
@@ -15,7 +15,7 @@ there will be subfolders such as `0` and `1`, which contain a number of
 `.dat` files. These files can be uploaded into the browser for conversion in
 the next conversion step.
 
-## 2. Run the .dat file through the browser FFT
+## 2. Run the .dat files through the browser FFT
 
 Start your HTTP server:
 
