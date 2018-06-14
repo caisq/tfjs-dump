@@ -2,18 +2,36 @@
 
 ## 1. Convert the .wav files from the speech-command dataset
 
-For example:
+As a preparatory step, download and extract the speech command dataset.
+
+The first step does the following things:
+1. converts the .wav files into .dat files that are more easily ingestable in
+   the browser
+2. splits the data into a training split and a testing split.
+3. Discards a small fraction of recording that are not approximately 1.0 second
+   long.
+
+For example, suppose you have downloaded and extracted the raw speech command
+dataset at 'path/to/speech_command_data'. Use the following command:
 
 ```sh
 python prep_wav.py \
-    path/to/speech_command_data/three \
-    path/to/converted/data/three
+    --words zero,one,two,three,four,five,six,seven,eight,nine,left,right,up,down,go,stop \
+    --test_split 0.15 \
+    path/to/speech_command_data \
+    path/to/converted/data
 ```
 
-Under the output path (i.e., `path/to/converted/data/three` in this example),
-there will be subfolders such as `0` and `1`, which contain a number of
-`.dat` files. These files can be uploaded into the browser for conversion in
-the next conversion step.
+Under the output path (i.e., `path/to/converted/data/` in this example),
+there will be two subfolders, called `train` and `test`, which hold the
+training and testing splits, respectively. Under each of `train` and `test`,
+there are subfolders with names matching the words (e.g., `zero`, `one`,
+etc.) In each of those subfolders, there will subfolders with names
+such as `0` and `1`, which contain a number of
+`.dat` files.
+
+The files from the `train` split directory can be uploaded into the browser
+for conversion in the next conversion step.
 
 ## 2. Run the .dat files through the browser FFT
 

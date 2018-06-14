@@ -8,6 +8,7 @@ import math
 import os
 import struct
 
+import numpy as np
 from scipy.io import wavfile
 from scipy.signal import resample
 
@@ -79,6 +80,88 @@ def convert(in_wav_path, target_fs, frame_size, out_data_path):
   return len(waveform)
 
 
+def convert_wav_files_in_dir(input_dir,
+                             output_dir,
+                             recordings_per_subfolder,
+                             target_fs,
+                             frame_size,
+                             match_len=None,
+                             test_split=None,
+                             test_output_dir=None):
+  '''Convert wav files from input directory and write results output dir.
+
+  Args:
+    input_dir: Input directory.
+    output_dir: Output directory.
+    recordings_per_subfolder: Number of recordings to put in every subdirectory
+      under input_dir.
+    target_fs: Target sampling frequency.
+    frame_size: Frame size.
+    match_len: Only output the recordings with the exact length (optional).
+    test_split: Fraction of wav files from input_dir to go into test_output_dir
+      as test data. If specified, test_output_dir must also be specified, else
+      a ValueError will be thrown. Must be a number between 0.0 and 1.0.
+    test_output_dir: Output directory for test data.
+  '''
+  if os.path.isfile(output_dir):
+    raise ValueError(
+        'If input_wav_path is a directory, '
+        'output_data_path must also be a directory.')
+  elif not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
+  if test_split is not None:
+    assert test_split > 0.0 and test_split < 1.0
+    if test_output_dir is None:
+      raise ValueError(
+          'test_output_dir must be specified if test_split is specified.')
+    if not os.path.isdir(test_output_dir):
+      os.makedirs(test_output_dir)
+
+  in_wav_paths = sorted(glob.glob(os.path.join(input_dir, '*.wav')))
+  if not in_wav_paths:
+    raise ValueError('Cannot find any .wav files in %s' % input_dir)
+
+  if test_split is None:
+    train_wav_paths = in_wav_paths
+    test_wav_paths = []
+  else:
+    indices = np.arange(len(in_wav_paths))
+    np.random.shuffle(indices)
+    num_train = int(np.round((1.0 - test_split) * len(in_wav_paths)))
+    train_wav_paths = [in_wav_paths[i] for i in indices[:num_train]]
+    test_wav_paths = [in_wav_paths[i] for i in indices[num_train:]]
+
+  for n in range(2):
+    if n == 0:
+      split_in_path = train_wav_paths
+      split_out_path = output_dir
+    else:
+      if test_split is None:
+        break
+      split_in_path = test_wav_paths
+      split_out_path = test_output_dir
+
+    for i, in_path in enumerate(split_in_path):
+      subfolder = os.path.join(
+          split_out_path,
+          '%d' % int(math.floor(i / recordings_per_subfolder)))
+      if not os.path.exists(subfolder):
+        os.makedirs(subfolder)
+      file_basename = os.path.basename(in_path)
+      filename, extension_name = os.path.splitext(file_basename)
+      output_basename = (
+          filename + '.dat' if extension_name.lower() == '.wav' else filename)
+      out_path = os.path.join(subfolder, output_basename)
+      print('%s --> %s' % (in_path, out_path))
+      converted_len = convert(
+          in_path, target_fs, frame_size, out_path)
+      if match_len is not None and match_len != converted_len:
+        print('  Skipped %s due to length mismatch (%d != %d)' % (
+            in_path, converted_len, match_len))
+        os.remove(out_path)
+
+
 if __name__ == '__main__':
   parser = argparse.ArgumentParser('Preparation of speech command data.')
   parser.add_argument(
@@ -88,6 +171,16 @@ if __name__ == '__main__':
       'output_data_path', type=str,
       help='Path to a directory in which the converted data files will be '
       'be written')
+  parser.add_argument(
+      '--words', type=str,
+      help='Words to get from `output_data_path`, seperated by commas. '
+      'It is assumes that subdirectories with the same names as the words '
+      'exist under `output_data_path`. No dupicates are allowed.')
+  parser.add_argument(
+      '--test_split', type=float, default=0.15,
+      help='The fraction of files to split out for testing. Must be a '
+      'number between 0 and 1. Applicable only if --words is set. '
+      'The files are split randomly into the training and test subsets.')
   parser.add_argument(
       '--target_fs', type=float, default='44100',
       help='Target sampling frqeuency in Hz in the output data files.'
@@ -106,33 +199,47 @@ if __name__ == '__main__':
 
   xs = []
   if os.path.isdir(parsed.input_wav_path):
-    if os.path.isfile(parsed.output_data_path):
-      raise ValueError(
-          'If input_wav_path is a directory, '
-          'output_data_path must also be a directory.')
-    elif not os.path.exists(parsed.output_data_path):
-      os.makedirs(parsed.output_data_path)
+    if parsed.words is None:
+      convert_wav_files_in_dir(
+          parsed.input_wav_path, parsed.output_data_path,
+          parsed.recordings_per_subfolder, parsed.target_fs,
+          parsed.frame_size, parsed.match_len)
+    else:
+      words = parsed.words.strip().split(',')
+      words = [word.strip() for word in words]
+      print(words)
+      if len(set(words)) != len(words):
+        raise ValueError('Found duplicate items in words: %s' % parsed.words)
 
-    input_wav_paths = (
-        sorted(glob.glob(os.path.join(parsed.input_wav_path, '*.wav'))))
-    for i, in_path in enumerate(input_wav_paths):
-      subfolder = os.path.join(
-          parsed.output_data_path,
-          '%d' % int(math.floor(i / parsed.recordings_per_subfolder)))
-      if not os.path.exists(subfolder):
-        os.makedirs(subfolder)
-      file_basename = os.path.basename(in_path)
-      filename, extension_name = os.path.splitext(file_basename)
-      output_basename = (
-          filename + '.dat' if extension_name.lower() == '.wav' else filename)
-      out_path = os.path.join(subfolder, output_basename)
-      print('%s --> %s' % (in_path, out_path))
-      converted_len = convert(
-          in_path, parsed.target_fs, parsed.frame_size, out_path)
-      if parsed.match_len is not None and parsed.match_len != converted_len:
-        print('  Skipped %s due to length mismatch (%d != %d)' % (
-            in_path, converted_len, parsed.match_len))
-        os.remove(out_path)
+      # Make sure that all the subfolders exist under `input_wav_path`.
+      for word in words:
+        word_dir = os.path.join(parsed.input_wav_path, word)
+        if not os.path.isdir(word_dir):
+          raise ValueError('Missing word directory: %s' % word_dir)
+
+      assert parsed.test_split > 0.0 and parsed.test_split < 1.0
+      print('Using test split: %f' % parsed.test_split)
+      print('Number of words: %d' % len(words))
+
+      if not os.path.isdir(parsed.output_data_path):
+        os.makedirs(parsed.output_data_path)
+
+      train_base = os.path.join(parsed.output_data_path, 'train')
+      if not os.path.isdir(train_base):
+        os.makedirs(train_base)
+      test_base = os.path.join(parsed.output_data_path, 'test')
+      if not os.path.isdir(test_base):
+        os.makedirs(test_base)
+
+      for word in words:
+        word_input_dir = os.path.join(parsed.input_wav_path, word)
+        train_out_dir = os.path.join(train_base, word)
+        test_out_dir = os.path.join(test_base, word)
+        convert_wav_files_in_dir(
+            word_input_dir, train_out_dir,
+            parsed.recordings_per_subfolder, parsed.target_fs,
+            parsed.frame_size, parsed.match_len,
+            parsed.test_split, test_out_dir)
   else:
     input_wav_paths = parsed.input_wav_path.split(',')
 
