@@ -17,7 +17,7 @@ const saveLocation = 'file:///tmp/tfjs-node-model-1';
 model.save(saveLocation).then(saveResult => {
   console.log(saveResult);
 
-  tf.loadModel(saveLocation + '/model.json').then(model => {
-    model.predict(xs).print();
+  tf.loadModel(saveLocation + '/model.json').then(model2 => {
+    model2.predict(xs).print();
   });
 });
