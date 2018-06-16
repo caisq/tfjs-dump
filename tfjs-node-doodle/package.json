@@ -1,7 +1,7 @@
 {
-  "name": "tfjs-node-try-3",
+  "name": "tfjs-node-doodle",
   "version": "0.0.1",
-  "description": "Testing sending models from tfjs-layers to Keras",
+  "description": "Doodling with tfjs-node",
   "private": false,
   "dependencies": {
     "@tensorflow/tfjs": "0.11.6",
