@@ -9,8 +9,7 @@ model.add(tf.layers.dense({units: 10, inputShape: [5], activation: 'relu'}));
 model.add(tf.layers.dense({units: 4, activation: 'softmax'}));
 
 const xs = tf.zeros([2, 5]);
-const ys = model.predict(xs);
-ys.print();
+model.predict(xs).print();
 
 const saveLocation = 'file:///tmp/tfjs-node-model-1';
 
