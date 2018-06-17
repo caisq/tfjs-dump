@@ -9,97 +9,27 @@ const predictionCanvas = document.getElementById('prediction-canvas');
 let stopRequested = false;
 
 let sampleRate = 44100;
-let frameMillis;
 
 let words;
 
 // Setup slider for magnitude threshold.
-let magnitudeThreshold = -35;
-const magnitudeThresholdMin = -60;
-const magnitudeThresholdMax = 0;
+const runOptions = {
+  magnitudeThreshold: -35,
+  magnitudeThresholdMin: -60,
+  magnitudeThresholdMax: 0,
+  predictEveryMillis: 500,
+  predictEveryMillisMin: 100,
+  predictEveryMillisMax: 1000,
+  predictEveryMillisStep: 100,
+  frameMillis: null,  // Frame duration in milliseconds.
+  predictEveryFrames: null,  // Perform recognition every _ milliseconds.
+};
 
-const thresholdSlider = document.getElementById('magnitude-threshold');
-thresholdSlider.setAttribute('min', magnitudeThresholdMin);
-thresholdSlider.setAttribute('max', magnitudeThresholdMax);
-
-const magnitudeThresholdSpan =
-    document.getElementById('magnitude-threshold-span');
-thresholdSlider.value = magnitudeThreshold;
-magnitudeThresholdSpan.textContent = magnitudeThreshold;
-thresholdSlider.addEventListener('click', () => {
-  magnitudeThreshold = thresholdSlider.value;
-  magnitudeThresholdSpan.textContent = magnitudeThreshold;
-});
-
-const magnitudeThresholdInc =
-    document.getElementById('magnitude-threshold-increase');
-const magnitudeThresholdDec =
-    document.getElementById('magnitude-threshold-decrease');
-magnitudeThresholdInc.addEventListener('click', () => {
-  if (magnitudeThreshold + 1 > magnitudeThresholdMax) {
-    return;
-  }
-  magnitudeThreshold++;
-  thresholdSlider.value = magnitudeThreshold;
-  magnitudeThresholdSpan.textContent = magnitudeThreshold;
-});
-magnitudeThresholdDec.addEventListener('click', () => {
-  if (magnitudeThreshold - 1 < magnitudeThresholdMin) {
-    return;
-  }
-  magnitudeThreshold--;
-  thresholdSlider.value = magnitudeThreshold;
-  magnitudeThresholdSpan.textContent = magnitudeThreshold;
-});
-
-// Setup logic for predict-every-millis
-let predictEveryMillis = 500;
-const predictEveryMillisMin = 100;
-const predictEveryMillisMax = 1000;
-const predictEveryMillisStep = 100;
-
-const predictEveryMillisSlider = document.getElementById('predict-every-ms');
-predictEveryMillisSlider.setAttribute('min', predictEveryMillisMin);
-predictEveryMillisSlider.setAttribute('max', predictEveryMillisMax);
-predictEveryMillisSlider.setAttribute('step', predictEveryMillisStep);
-predictEveryMillisSlider.value = predictEveryMillis;
-
-const predictEveryMillisSpan = document.getElementById('predict-every-ms-span');
-predictEveryMillisSpan.textContent = predictEveryMillis;
-predictEveryMillisSlider.addEventListener('click', () => {
-  predictEveryMillis = predictEveryMillisSlider.value;
-  predictEveryFrames = Math.round(predictEveryMillis / frameMillis);
-  predictEveryMillisSpan.textContent = predictEveryMillis;
-});
-
-const predictEveryMillisDec =
-    document.getElementById('predict-every-ms-decrease');
-const predictEveryMillisInc =
-    document.getElementById('predict-every-ms-increase');
-predictEveryMillisDec.addEventListener('click', () => {
-  if (predictEveryMillis - predictEveryMillisStep < predictEveryMillisMin) {
-    return;
-  }
-  predictEveryMillis -= predictEveryMillisStep;
-  predictEveryFrames = Math.round(predictEveryMillis / frameMillis);
-  predictEveryMillisSlider.value = predictEveryMillis;
-  predictEveryMillisSpan.textContent = predictEveryMillis;
-});
-predictEveryMillisInc.addEventListener('click', () => {
-  if (predictEveryMillis + predictEveryMillisStep > predictEveryMillisMax) {
-    return;
-  }
-  predictEveryMillis += predictEveryMillisStep;
-  predictEveryFrames = Math.round(predictEveryMillis / frameMillis);
-  predictEveryMillisSlider.value = predictEveryMillis;
-  predictEveryMillisSpan.textContent = predictEveryMillis;
-});
+setUpThresholdSlider(runOptions);
+setUpPredictEveryMillisSlider(runOptions);
 
 let numFrames;
 let frameSize = 1024;
-
-// Perform recognition every _ milliseconds.
-let predictEveryFrames;
 
 let modelFFTLength;
 let intervalTask = null;
@@ -154,9 +84,10 @@ loadModelButton.addEventListener('click', async () => {
   numFrames = inputShape[1];
   modelFFTLength = inputShape[2];
 
-  frameMillis = frameSize / sampleRate * 1e3;
-  predictEveryFrames = Math.round(predictEveryMillis / frameMillis);
-  console.log('predictEveryFrames = ' + predictEveryFrames);
+  runOptions.frameMillis = frameSize / sampleRate * 1e3;
+  runOptions.predictEveryFrames =
+    Math.round(runOptions.predictEveryMillis / runOptions.frameMillis);
+  console.log('predictEveryFrames = ' + runOptions.predictEveryFrames);
 
   console.assert(inputShape[3] === 1);
 
@@ -222,7 +153,7 @@ function handleMicStream(stream) {
     }
 
     let maxMagnitude = -Infinity;
-    if (frameCount % predictEveryFrames === 0 && frameCount > 0) {
+    if (frameCount % runOptions.predictEveryFrames === 0 && frameCount > 0) {
       const tensorBuffer = tf.buffer([numFrames * modelFFTLength]);
       for (let i = 0; i < bufferData.length; ++i) {
         const x = bufferData[(frameCount * modelFFTLength + i) % bufferSize];
@@ -232,7 +163,7 @@ function handleMicStream(stream) {
         tensorBuffer.set(x, i);
       }
 
-      if (maxMagnitude > magnitudeThreshold) {
+      if (maxMagnitude > runOptions.magnitudeThreshold) {
         tf.tidy(() => {
           const x = tensorBuffer.toTensor().reshape([
             1, numFrames, modelFFTLength, 1]);
@@ -266,7 +197,8 @@ function handleMicStream(stream) {
 
     const ctx = mainCanvas.getContext('2d');
     ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
-    ctx.strokeStyle = instanceMax > magnitudeThreshold ? '#00AA00' : '#AAAAAA';
+    ctx.strokeStyle =
+      instanceMax > runOptions.magnitudeThreshold ? '#00AA00' : '#AAAAAA';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, -freqData[0] + 100);
@@ -277,8 +209,8 @@ function handleMicStream(stream) {
 
     // Draw the threshold.
     ctx.beginPath();
-    ctx.moveTo(0, -magnitudeThreshold + 100);
-    ctx.lineTo(modelFFTLength - 1, -magnitudeThreshold + 100);
+    ctx.moveTo(0, -runOptions.magnitudeThreshold + 100);
+    ctx.lineTo(modelFFTLength - 1, -runOptions.magnitudeThreshold + 100);
     ctx.stroke();
 
     const bufferPos = frameCount % numFrames;
