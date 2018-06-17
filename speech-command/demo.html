@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>TensorFlow.js Speech Commands Demo</title>
+
+    <style>
+      .control {
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <input id="model-url" size="100" value="./speech_command_browser_14w_normalized_tfjs/model.json"></input>
+      <button id="load-model">Load model</button>
+    </div>
+
+    <div>
+      <button id="start" disabled="true">Start</button>
+      <button id="stop" disabled="true">Stop</button>
+      <span id="recog-label"></span>
+    </div>
+
+    <div>
+      <canvas id="prediction-canvas" height="100" width="800"></canvas>
+    </div>
+
+    <div class="control">
+      <span>Magnitude threshold:&nbsp;</span>
+      <span id="magnitude-threshold-span"></span>
+      <div class="slidecontainer">
+        <button id="magnitude-threshold-decrease">-</button>
+        <input type="range" min="-60" max="0" value="-35" class="slider" id="magnitude-threshold">
+        <button id="magnitude-threshold-increase">+</button>
+      </div>
+    </div>
+
+    <div class="control">
+      <span>Predict every:&nbsp;</span>
+      <span id="predict-every-ms-span"></span>
+      <span>&nbsp;ms</span>
+      <div class="slidecontainer">
+        <button id="predict-every-ms-decrease">-</button>
+        <input type="range" class="slider" id="predict-every-ms">
+        <button id="predict-every-ms-increase">+</button>
+      </div>
+    </div>
+
+    <div>
+      <canvas id="main-canvas" height="600" width="800"></canvas>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.11.6"></script>
+    <script src="tensor_utils.js"></script>
+    <script src="demo.js"></script>
+  </body>
+</html>
