@@ -1,3 +1,12 @@
+const statusDisplay = document.getElementById('status-display');
+
+function logToStatusDisplay(message) {
+  const date = new Date();
+
+  statusDisplay.value =
+    `[${date.toISOString()}] ` + message + '\n' + statusDisplay.value;
+}
+
 function setUpThresholdSlider(runOptions) {
   const thresholdSlider = document.getElementById('magnitude-threshold');
   thresholdSlider.setAttribute('min', runOptions.magnitudeThresholdMin);

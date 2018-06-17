@@ -78,8 +78,7 @@ loadModelButton.addEventListener('click', async () => {
     alert(`Model URL must end in ${modelJSONSuffix}.`);
   }
 
-  model = await tf.loadModel(
-    tf.io.browserHTTPRequest(loadModelFrom, {credentials: 'include'}));
+  model = await tf.loadModel(loadModelFrom);
   const inputShape = model.inputs[0].shape;
   numFrames = inputShape[1];
   runOptions.modelFFTLength = inputShape[2];
@@ -87,7 +86,7 @@ loadModelButton.addEventListener('click', async () => {
   runOptions.frameMillis = frameSize / sampleRate * 1e3;
   runOptions.predictEveryFrames =
     Math.round(runOptions.predictEveryMillis / runOptions.frameMillis);
-  console.log('predictEveryFrames = ' + runOptions.predictEveryFrames);
+  logToStatusDisplay('predictEveryFrames = ' + runOptions.predictEveryFrames);
 
   console.assert(inputShape[3] === 1);
 
@@ -103,9 +102,9 @@ loadModelButton.addEventListener('click', async () => {
     throw new Error(
       `Unexpected frame size from model: ${metadataJSON.frameSize}`);
   }
-  console.log('Loaded frameSize:', frameSize);
   words = metadataJSON.words;
-  console.log('Loaded words:', words);
+  logToStatusDisplay('Loaded frameSize: ' + frameSize);
+  logToStatusDisplay(`Loaded ${words.length} words: ` + words);
 
   startButton.disabled = false;
 });
@@ -117,7 +116,7 @@ function warmUpModel(numPredictCalls) {
     const tBegin = new Date();
     model.predict(x);
     const tEnd = new Date();
-    console.log(`Warm up ${i + 1} took: ${tEnd.getTime() - tBegin.getTime()} ms`);
+    logToStatusDisplay(`Warm up ${i + 1} took: ${tEnd.getTime() - tBegin.getTime()} ms`);
   }
   x.dispose();
 }
