@@ -8,8 +8,6 @@ const predictionCanvas = document.getElementById('prediction-canvas');
 
 let stopRequested = false;
 
-let sampleRate = 44100;
-
 let words;
 
 // Setup slider for magnitude threshold.
@@ -21,6 +19,9 @@ const runOptions = {
   predictEveryMillisMin: 100,
   predictEveryMillisMax: 1000,
   predictEveryMillisStep: 100,
+  sampleRate: 44100,
+  frameSize: 1024,
+  numFrames: null,
   modelFFTLength: null,
   frameMillis: null,  // Frame duration in milliseconds.
   predictEveryFrames: null,  // Perform recognition every _ milliseconds.
@@ -29,8 +30,7 @@ const runOptions = {
 setUpThresholdSlider(runOptions);
 setUpPredictEveryMillisSlider(runOptions);
 
-let numFrames;
-let frameSize = 1024;
+
 
 let intervalTask = null;
 
@@ -80,10 +80,11 @@ loadModelButton.addEventListener('click', async () => {
 
   model = await tf.loadModel(loadModelFrom);
   const inputShape = model.inputs[0].shape;
-  numFrames = inputShape[1];
+  runOptions.numFrames = inputShape[1];
   runOptions.modelFFTLength = inputShape[2];
+  logToStatusDisplay(`numFrames: ${runOptions.numFrames}`);
 
-  runOptions.frameMillis = frameSize / sampleRate * 1e3;
+  runOptions.frameMillis = runOptions.frameSize / runOptions.sampleRate * 1e3;
   runOptions.predictEveryFrames =
     Math.round(runOptions.predictEveryMillis / runOptions.frameMillis);
   logToStatusDisplay('predictEveryFrames = ' + runOptions.predictEveryFrames);
@@ -98,12 +99,12 @@ loadModelButton.addEventListener('click', async () => {
     0, loadModelFrom.length - modelJSONSuffix.length) + metadataJSONSuffix;
 
   const metadataJSON = await (await fetch(loadMetadataFrom)).json();
-  if (frameSize !== Number.parseInt(metadataJSON.frameSize)) {
+  if (runOptions.frameSize !== Number.parseInt(metadataJSON.frameSize)) {
     throw new Error(
       `Unexpected frame size from model: ${metadataJSON.frameSize}`);
   }
   words = metadataJSON.words;
-  logToStatusDisplay('Loaded frameSize: ' + frameSize);
+  logToStatusDisplay('frameSize: ' + runOptions.frameSize);
   logToStatusDisplay(`Loaded ${words.length} words: ` + words);
 
   startButton.disabled = false;
@@ -124,24 +125,34 @@ function warmUpModel(numPredictCalls) {
 function start() {
   stopRequested = false;
   navigator.mediaDevices.getUserMedia({audio: true, video: false})
-    .then(handleMicStream);
+    .then(stream => {
+      logToStatusDisplay('getUserMedia() succeeded.');
+      handleMicStream(stream);
+    }).catch(err => {
+      handleMicStream('getUserMedia() failed.');
+    })
 }
 
 function handleMicStream(stream) {
-  if (numFrames == null || runOptions.modelFFTLength == null) {
+  if (runOptions.numFrames == null || runOptions.modelFFTLength == null) {
     throw new Error('Load model first!');
   }
 
   const audioContext = new AudioContext();
-  console.assert(audioContext.sampleRate === sampleRate);
+  logToStatusDisplay(`audioContext.sampleRate = ${audioContext.sampleRate}`);
+  if (audioContext.sampleRate !== runOptions.sampleRate) {
+    alert(
+      `Mismatch in sampling rate: ` +
+      `${audioContext.sampleRate} !== ${runOptions.sampleRate}`);
+  }
 
   const source = audioContext.createMediaStreamSource(stream);
 
   const analyser = audioContext.createAnalyser();
-  analyser.fftSize = frameSize * 2;
+  analyser.fftSize = runOptions.frameSize * 2;
   analyser.smoothingTimeConstant = 0.0;
   const freqData = new Float32Array(analyser.frequencyBinCount);
-  const bufferSize = runOptions.modelFFTLength * numFrames;
+  const bufferSize = runOptions.modelFFTLength * runOptions.numFrames;
   const bufferData = new Float32Array(bufferSize);
   source.connect(analyser);
 
@@ -153,7 +164,8 @@ function handleMicStream(stream) {
 
     let maxMagnitude = -Infinity;
     if (frameCount % runOptions.predictEveryFrames === 0 && frameCount > 0) {
-      const tensorBuffer = tf.buffer([numFrames * runOptions.modelFFTLength]);
+      const tensorBuffer = tf.buffer([
+        runOptions.numFrames * runOptions.modelFFTLength]);
       for (let i = 0; i < bufferData.length; ++i) {
         const x =
           bufferData[(frameCount * runOptions.modelFFTLength + i) % bufferSize];
@@ -166,7 +178,7 @@ function handleMicStream(stream) {
       if (maxMagnitude > runOptions.magnitudeThreshold) {
         tf.tidy(() => {
           const x = tensorBuffer.toTensor().reshape([
-            1, numFrames, runOptions.modelFFTLength, 1]);
+            1, runOptions.numFrames, runOptions.modelFFTLength, 1]);
           const inputTensor = normalize(x);
 
           const probs = model.predict(inputTensor);
@@ -190,7 +202,7 @@ function handleMicStream(stream) {
     const freqDataSlice = freqData.slice(0, runOptions.modelFFTLength);
     plotSpectrum(mainCanvas, freqDataSlice, runOptions);
 
-    const bufferPos = frameCount % numFrames;
+    const bufferPos = frameCount % runOptions.numFrames;
     bufferData.set(freqDataSlice, bufferPos * runOptions.modelFFTLength);
     frameCount++;
   }
