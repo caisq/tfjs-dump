@@ -16,6 +16,7 @@
     </div>
     <div>
       <input id="model-url" size="100" value="https://storage.googleapis.com/tfjs-speech-command-model-14w/model.json"></input>
+      <!-- <input id="model-url" size="100" value="./speech_command_browser_14w_normalized_tfjs/model.json"></input> -->
       <button id="load-model">Load model</button>
     </div>
 
@@ -51,11 +52,14 @@
     </div>
 
     <div>
-      <canvas id="main-canvas" height="600" width="800"></canvas>
+      <canvas id="main-canvas" height="400" width="600"></canvas>
+      <canvas id="spectrogram-canvas" height="400" width="600"></canvas>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.11.6"></script>
+    <script src="spectral_plots.js"></script>
     <script src="tensor_utils.js"></script>
+    <script src="tracker.js"></script>
     <script src="demo-ui.js"></script>
     <script src="demo.js"></script>
   </body>

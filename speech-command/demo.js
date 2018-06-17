@@ -3,6 +3,7 @@ const loadModelButton = document.getElementById('load-model');
 const startButton = document.getElementById('start');
 const stopButton = document.getElementById('stop');
 const mainCanvas = document.getElementById('main-canvas');
+const spectrogramCanvas = document.getElementById('spectrogram-canvas');
 const recogLabel = document.getElementById('recog-label');
 const predictionCanvas = document.getElementById('prediction-canvas');
 
@@ -21,6 +22,9 @@ const runOptions = {
   predictEveryMillisStep: 100,
   sampleRate: 44100,
   frameSize: 1024,
+  rotatingBufferSizeMultiplier: 2,
+  refractoryPeriodFrames: 40,
+  waitingPeriodFrames: 20,  // TODO(cais): Maybe us milliseconds in these two constants.
   numFrames: null,
   modelFFTLength: null,
   frameMillis: null,  // Frame duration in milliseconds.
@@ -29,8 +33,6 @@ const runOptions = {
 
 setUpThresholdSlider(runOptions);
 setUpPredictEveryMillisSlider(runOptions);
-
-
 
 let intervalTask = null;
 
@@ -71,6 +73,8 @@ loadModelButton.addEventListener('click', async () => {
   const modelJSONSuffix = 'model.json';
   const metadataJSONSuffix = 'metadata.json';
 
+  loadModelButton.disabled = true;
+
   // 1. Load model.
   const loadModelFrom = modelURLInput.value;
   if (loadModelFrom.indexOf(modelJSONSuffix) !==
@@ -78,6 +82,8 @@ loadModelButton.addEventListener('click', async () => {
     alert(`Model URL must end in ${modelJSONSuffix}.`);
   }
 
+
+  logToStatusDisplay('Loading model...');
   model = await tf.loadModel(loadModelFrom);
   const inputShape = model.inputs[0].shape;
   runOptions.numFrames = inputShape[1];
@@ -146,54 +152,32 @@ function handleMicStream(stream) {
       `${audioContext.sampleRate} !== ${runOptions.sampleRate}`);
   }
 
+  console.log('stream:', stream);  // DEBUG
   const source = audioContext.createMediaStreamSource(stream);
 
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = runOptions.frameSize * 2;
   analyser.smoothingTimeConstant = 0.0;
-  const freqData = new Float32Array(analyser.frequencyBinCount);
-  const bufferSize = runOptions.modelFFTLength * runOptions.numFrames;
-  const bufferData = new Float32Array(bufferSize);
   source.connect(analyser);
 
+  const freqData = new Float32Array(analyser.frequencyBinCount);
+  const rotatingBufferNumFrames =
+    runOptions.numFrames * runOptions.rotatingBufferSizeMultiplier;
+  const rotatingBufferSize =
+    runOptions.modelFFTLength * rotatingBufferNumFrames;
+  const rotatingBuffer = new Float32Array(rotatingBufferSize);
+
   let frameCount = 0;
+  const tracker = new Tracker(
+    runOptions.waitingPeriodFrames, runOptions.refractoryPeriodFrames);
   function draw() {
     if (stopRequested) {
       return;
     }
 
-    let maxMagnitude = -Infinity;
-    if (frameCount % runOptions.predictEveryFrames === 0 && frameCount > 0) {
-      const tensorBuffer = tf.buffer([
-        runOptions.numFrames * runOptions.modelFFTLength]);
-      for (let i = 0; i < bufferData.length; ++i) {
-        const x =
-          bufferData[(frameCount * runOptions.modelFFTLength + i) % bufferSize];
-        if (x > maxMagnitude) {
-          maxMagnitude = x;
-        }
-        tensorBuffer.set(x, i);
-      }
-
-      if (maxMagnitude > runOptions.magnitudeThreshold) {
-        tf.tidy(() => {
-          const x = tensorBuffer.toTensor().reshape([
-            1, runOptions.numFrames, runOptions.modelFFTLength, 1]);
-          const inputTensor = normalize(x);
-
-          const probs = model.predict(inputTensor);
-          plotPredictions(probs.dataSync());
-          const recogIndex = tf.argMax(probs, -1).dataSync()[0];
-          recogLabel.textContent = words[recogIndex];
-        });
-      } else {
-        // Just clear the prediction plots.
-        plotPredictions();
-      }
-    }
-
     analyser.getFloatFrequencyData(freqData);
     if (freqData[0] === -Infinity && freqData[1] === -Infinity) {
+      logToStatusDisplay('Stopped due to -Infinity magnitude.');
       clearInterval(intervalTask);
       stopRequested = true;
       return;
@@ -202,8 +186,33 @@ function handleMicStream(stream) {
     const freqDataSlice = freqData.slice(0, runOptions.modelFFTLength);
     plotSpectrum(mainCanvas, freqDataSlice, runOptions);
 
-    const bufferPos = frameCount % runOptions.numFrames;
-    bufferData.set(freqDataSlice, bufferPos * runOptions.modelFFTLength);
+    const bufferPos = frameCount % rotatingBufferNumFrames;
+    rotatingBuffer.set(freqDataSlice, bufferPos * runOptions.modelFFTLength);
+    const spectralMax = getArrayMax(freqDataSlice);
+
+    tracker.tick(spectralMax > runOptions.magnitudeThreshold);
+    if (tracker.shouldFire()) {
+      console.log(
+        `frameCount = ${frameCount}; bufferPos = ${bufferPos}`);  // DEBUG
+      // const inputTensor = getInputTensorFromRotatingBuffer(rotatingBuffer, frameCount);
+      const freqData = getFrequencyDataFromRotatingBuffer(
+        rotatingBuffer, frameCount - runOptions.numFrames);
+      // plotSpectrogram(
+      //   spectrogramCanvas, freqData,
+      //   runOptions.modelFFTLength, runOptions.modelFFTLength);
+
+      // DEBUG
+      // clearInterval(intervalTask); stopRequested = true; return;
+      const inputTensor = getInputTensorFromFrequencyData(freqData);
+      const probs = model.predict(inputTensor);
+      plotPredictions(probs.dataSync());
+      const recogIndex = tf.argMax(probs, -1).dataSync()[0];
+      recogLabel.textContent += words[recogIndex] + ',';
+    } else if (tracker.isResting()) {
+      // Clear prediction plot.
+      plotPredictions();
+    }
+
     frameCount++;
   }
 
@@ -211,6 +220,46 @@ function handleMicStream(stream) {
     intervalTask = setInterval(
       draw, analyser.frequencyBinCount / audioContext.sampleRate * 1000);
   }, 50);
+}
+
+function getArrayMax(xs) {
+  let max = -Infinity;
+  for (let i = 0; i < xs.length; ++i) {
+    if (xs[i] > max) {
+      max = xs[i];
+    }
+  }
+  return max;
+}
+
+function getFrequencyDataFromRotatingBuffer(rotatingBuffer, frameCount) {
+  const size = runOptions.numFrames * runOptions.modelFFTLength;
+  const freqData = new Float32Array(size);
+
+  const rotatingBufferSize = rotatingBuffer.length;
+  const rotatingBufferNumFrames =
+    rotatingBufferSize / runOptions.modelFFTLength;
+  while (frameCount < 0) {
+    frameCount += rotatingBufferNumFrames;
+  }
+  const indexBegin =
+    (frameCount % rotatingBufferNumFrames) * runOptions.modelFFTLength;
+  const indexEnd = indexBegin + size;
+
+  for (let i = indexBegin; i < indexEnd; ++i) {
+    freqData[ i - indexBegin]  = rotatingBuffer[i % rotatingBufferSize];
+  }
+  return freqData;
+}
+
+function getInputTensorFromFrequencyData(freqData) {
+  const size = freqData.length;
+  const tensorBuffer = tf.buffer([size]);
+  for (let i = 0; i < freqData.length; ++i) {
+    tensorBuffer.set(freqData[i], i);
+  }
+  return normalize(tensorBuffer.toTensor().reshape([
+    1, runOptions.numFrames, runOptions.modelFFTLength, 1]));
 }
 
 startButton.addEventListener('click', () => {
@@ -224,3 +273,4 @@ stopButton.addEventListener('click', () => {
   startButton.disabled = false;
   stopButton.disabled = true;
 });
+

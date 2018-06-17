@@ -2,9 +2,8 @@ const statusDisplay = document.getElementById('status-display');
 
 function logToStatusDisplay(message) {
   const date = new Date();
-
-  statusDisplay.value =
-    `[${date.toISOString()}] ` + message + '\n' + statusDisplay.value;
+  statusDisplay.value += `[${date.toISOString()}] ` + message + '\n';
+  statusDisplay.scrollTop = statusDisplay.scrollHeight;
 }
 
 function setUpThresholdSlider(runOptions) {

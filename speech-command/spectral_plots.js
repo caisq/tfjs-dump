@@ -1,6 +1,6 @@
-function plotSpectrum(spectrum) {
-  const ctx = mainCanvas.getContext('2d');
-  ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+function plotSpectrum(canvas, spectrum) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.beginPath();
   ctx.moveTo(0, 0);
   for (let i = 0; i < spectrum.length; ++i) {
@@ -28,7 +28,9 @@ function plotSpectrogram(canvas, frequencyData, fftSize, fftDisplaySize) {
     return;
   }
 
-  const ctx = mainCanvas.getContext('2d');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
   const numTimeSteps = frequencyData.length / fftSize;
   const pixelWidth = canvas.width / numTimeSteps;
   const pixelHeight = canvas.height / fftDisplaySize;
