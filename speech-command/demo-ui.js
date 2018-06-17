@@ -76,5 +76,32 @@ function setUpPredictEveryMillisSlider(runOptions) {
     predictEveryMillisSlider.value = runOptions.predictEveryMillis;
     predictEveryMillisSpan.textContent = runOptions.predictEveryMillis;
   });
+}
 
+function plotSpectrum(canvas, freqData, runOptions) {
+  let instanceMax = -Infinity;
+  for (const val of freqData) {
+    if (val > instanceMax) {
+      instanceMax = val;
+    }
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle =
+    instanceMax > runOptions.magnitudeThreshold ? '#00AA00' : '#AAAAAA';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, -freqData[0] + 100);
+  for (let i = 1; i < runOptions.modelFFTLength; ++i) {
+    ctx.lineTo(i, -freqData[i] + 100);
+  }
+  ctx.stroke();
+
+  // Draw the threshold.
+  ctx.beginPath();
+  ctx.moveTo(0, -runOptions.magnitudeThreshold + 100);
+  ctx.lineTo(
+    runOptions.modelFFTLength - 1, -runOptions.magnitudeThreshold + 100);
+  ctx.stroke();
 }

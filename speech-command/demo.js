@@ -21,6 +21,7 @@ const runOptions = {
   predictEveryMillisMin: 100,
   predictEveryMillisMax: 1000,
   predictEveryMillisStep: 100,
+  modelFFTLength: null,
   frameMillis: null,  // Frame duration in milliseconds.
   predictEveryFrames: null,  // Perform recognition every _ milliseconds.
 };
@@ -31,7 +32,6 @@ setUpPredictEveryMillisSlider(runOptions);
 let numFrames;
 let frameSize = 1024;
 
-let modelFFTLength;
 let intervalTask = null;
 
 let model;
@@ -82,7 +82,7 @@ loadModelButton.addEventListener('click', async () => {
     tf.io.browserHTTPRequest(loadModelFrom, {credentials: 'include'}));
   const inputShape = model.inputs[0].shape;
   numFrames = inputShape[1];
-  modelFFTLength = inputShape[2];
+  runOptions.modelFFTLength = inputShape[2];
 
   runOptions.frameMillis = frameSize / sampleRate * 1e3;
   runOptions.predictEveryFrames =
@@ -129,7 +129,7 @@ function start() {
 }
 
 function handleMicStream(stream) {
-  if (numFrames == null || modelFFTLength == null) {
+  if (numFrames == null || runOptions.modelFFTLength == null) {
     throw new Error('Load model first!');
   }
 
@@ -142,7 +142,7 @@ function handleMicStream(stream) {
   analyser.fftSize = frameSize * 2;
   analyser.smoothingTimeConstant = 0.0;
   const freqData = new Float32Array(analyser.frequencyBinCount);
-  const bufferSize = modelFFTLength * numFrames;
+  const bufferSize = runOptions.modelFFTLength * numFrames;
   const bufferData = new Float32Array(bufferSize);
   source.connect(analyser);
 
@@ -154,9 +154,10 @@ function handleMicStream(stream) {
 
     let maxMagnitude = -Infinity;
     if (frameCount % runOptions.predictEveryFrames === 0 && frameCount > 0) {
-      const tensorBuffer = tf.buffer([numFrames * modelFFTLength]);
+      const tensorBuffer = tf.buffer([numFrames * runOptions.modelFFTLength]);
       for (let i = 0; i < bufferData.length; ++i) {
-        const x = bufferData[(frameCount * modelFFTLength + i) % bufferSize];
+        const x =
+          bufferData[(frameCount * runOptions.modelFFTLength + i) % bufferSize];
         if (x > maxMagnitude) {
           maxMagnitude = x;
         }
@@ -166,7 +167,7 @@ function handleMicStream(stream) {
       if (maxMagnitude > runOptions.magnitudeThreshold) {
         tf.tidy(() => {
           const x = tensorBuffer.toTensor().reshape([
-            1, numFrames, modelFFTLength, 1]);
+            1, numFrames, runOptions.modelFFTLength, 1]);
           const inputTensor = normalize(x);
 
           const probs = model.predict(inputTensor);
@@ -187,35 +188,11 @@ function handleMicStream(stream) {
       return;
     }
 
-    const freqDataSlice = freqData.slice(0, modelFFTLength);
-    let instanceMax = -Infinity;
-    for (const val of freqDataSlice) {
-      if (val > instanceMax) {
-        instanceMax = val;
-      }
-    }
-
-    const ctx = mainCanvas.getContext('2d');
-    ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
-    ctx.strokeStyle =
-      instanceMax > runOptions.magnitudeThreshold ? '#00AA00' : '#AAAAAA';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, -freqData[0] + 100);
-    for (let i = 1; i < modelFFTLength; ++i) {
-      ctx.lineTo(i, -freqData[i] + 100);
-    }
-    ctx.stroke();
-
-    // Draw the threshold.
-    ctx.beginPath();
-    ctx.moveTo(0, -runOptions.magnitudeThreshold + 100);
-    ctx.lineTo(modelFFTLength - 1, -runOptions.magnitudeThreshold + 100);
-    ctx.stroke();
+    const freqDataSlice = freqData.slice(0, runOptions.modelFFTLength);
+    plotSpectrum(mainCanvas, freqDataSlice, runOptions);
 
     const bufferPos = frameCount % numFrames;
-    bufferData.set(
-      freqDataSlice, bufferPos * modelFFTLength);
+    bufferData.set(freqDataSlice, bufferPos * runOptions.modelFFTLength);
     frameCount++;
   }
 
