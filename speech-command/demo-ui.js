@@ -42,50 +42,6 @@ function setUpThresholdSlider(runOptions) {
   });
 }
 
-function setUpPredictEveryMillisSlider(runOptions) {
-  const predictEveryMillisSlider = document.getElementById('predict-every-ms');
-  predictEveryMillisSlider.setAttribute('min', runOptions.predictEveryMillisMin);
-  predictEveryMillisSlider.setAttribute('max', runOptions.predictEveryMillisMax);
-  predictEveryMillisSlider.setAttribute('step', runOptions.predictEveryMillisStep);
-  predictEveryMillisSlider.value = runOptions.predictEveryMillis;
-
-  const predictEveryMillisSpan = document.getElementById('predict-every-ms-span');
-  predictEveryMillisSpan.textContent = runOptions.predictEveryMillis;
-  predictEveryMillisSlider.addEventListener('click', () => {
-    runOptions.predictEveryMillis = predictEveryMillisSlider.value;
-    runOptions.predictEveryFrames =
-      Math.round(runOptions.predictEveryMillis / runOptions.frameMillis);
-    predictEveryMillisSpan.textContent = runOptions.predictEveryMillis;
-  });
-
-  const predictEveryMillisDec =
-      document.getElementById('predict-every-ms-decrease');
-  const predictEveryMillisInc =
-      document.getElementById('predict-every-ms-increase');
-  predictEveryMillisDec.addEventListener('click', () => {
-    if (runOptions.predictEveryMillis - runOptions.predictEveryMillisStep <
-        runOptions.predictEveryMillisMin) {
-      return;
-    }
-    runOptions.predictEveryMillis -= runOptions.predictEveryMillisStep;
-    runOptions.predictEveryFrames =
-      Math.round(runOptions.predictEveryMillis / runOptions.frameMillis);
-    predictEveryMillisSlider.value = runOptions.predictEveryMillis;
-    predictEveryMillisSpan.textContent = runOptions.predictEveryMillis;
-  });
-  predictEveryMillisInc.addEventListener('click', () => {
-    if (runOptions.predictEveryMillis + runOptions.predictEveryMillisStep >
-        runOptions.predictEveryMillisMax) {
-      return;
-    }
-    runOptions.predictEveryMillis += runOptions.predictEveryMillisStep;
-    runOptions.predictEveryFrames =
-      Math.round(runOptions.predictEveryMillis / runOptions.frameMillis);
-    predictEveryMillisSlider.value = runOptions.predictEveryMillis;
-    predictEveryMillisSpan.textContent = runOptions.predictEveryMillis;
-  });
-}
-
 function plotSpectrum(canvas, freqData, runOptions) {
   let instanceMax = -Infinity;
   for (const val of freqData) {

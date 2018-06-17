@@ -16,23 +16,17 @@ const runOptions = {
   magnitudeThreshold: -35,
   magnitudeThresholdMin: -60,
   magnitudeThresholdMax: 0,
-  predictEveryMillis: 500,
-  predictEveryMillisMin: 100,
-  predictEveryMillisMax: 1000,
-  predictEveryMillisStep: 100,
   sampleRate: 44100,
   frameSize: 1024,
   rotatingBufferSizeMultiplier: 2,
-  refractoryPeriodFrames: 40,
-  waitingPeriodFrames: 20,  // TODO(cais): Maybe us milliseconds in these two constants.
+  refractoryPeriodMillis: 1000,
+  waitingPeriodMillis: 500,
   numFrames: null,
   modelFFTLength: null,
   frameMillis: null,  // Frame duration in milliseconds.
-  predictEveryFrames: null,  // Perform recognition every _ milliseconds.
 };
 
 setUpThresholdSlider(runOptions);
-setUpPredictEveryMillisSlider(runOptions);
 
 let intervalTask = null;
 
@@ -91,9 +85,6 @@ loadModelButton.addEventListener('click', async () => {
   logToStatusDisplay(`numFrames: ${runOptions.numFrames}`);
 
   runOptions.frameMillis = runOptions.frameSize / runOptions.sampleRate * 1e3;
-  runOptions.predictEveryFrames =
-    Math.round(runOptions.predictEveryMillis / runOptions.frameMillis);
-  logToStatusDisplay('predictEveryFrames = ' + runOptions.predictEveryFrames);
 
   console.assert(inputShape[3] === 1);
 
@@ -135,8 +126,8 @@ function start() {
       logToStatusDisplay('getUserMedia() succeeded.');
       handleMicStream(stream);
     }).catch(err => {
-      handleMicStream('getUserMedia() failed.');
-    })
+      logToStatusDisplay('getUserMedia() failed: ' + err.message);
+    });
 }
 
 function handleMicStream(stream) {
@@ -152,7 +143,6 @@ function handleMicStream(stream) {
       `${audioContext.sampleRate} !== ${runOptions.sampleRate}`);
   }
 
-  console.log('stream:', stream);  // DEBUG
   const source = audioContext.createMediaStreamSource(stream);
 
   const analyser = audioContext.createAnalyser();
@@ -168,8 +158,17 @@ function handleMicStream(stream) {
   const rotatingBuffer = new Float32Array(rotatingBufferSize);
 
   let frameCount = 0;
-  const tracker = new Tracker(
-    runOptions.waitingPeriodFrames, runOptions.refractoryPeriodFrames);
+
+  const frameDurationMillis =
+    runOptions.frameSize / runOptions.sampleRate * 1e3;
+  const waitingPeriodFrames = Math.round(
+    runOptions.waitingPeriodMillis / frameDurationMillis);
+  const refractoryPeriodFrames = Math.round(
+    runOptions.refractoryPeriodMillis / frameDurationMillis);
+  logToStatusDisplay(`waitingPeriodFrames: ${waitingPeriodFrames}`);
+  logToStatusDisplay(`refractoryPeriodFrames: ${refractoryPeriodFrames}`);
+
+  const tracker = new Tracker(waitingPeriodFrames, refractoryPeriodFrames);
   function draw() {
     if (stopRequested) {
       return;
@@ -192,17 +191,12 @@ function handleMicStream(stream) {
 
     tracker.tick(spectralMax > runOptions.magnitudeThreshold);
     if (tracker.shouldFire()) {
-      console.log(
-        `frameCount = ${frameCount}; bufferPos = ${bufferPos}`);  // DEBUG
-      // const inputTensor = getInputTensorFromRotatingBuffer(rotatingBuffer, frameCount);
       const freqData = getFrequencyDataFromRotatingBuffer(
         rotatingBuffer, frameCount - runOptions.numFrames);
-      // plotSpectrogram(
-      //   spectrogramCanvas, freqData,
-      //   runOptions.modelFFTLength, runOptions.modelFFTLength);
+      plotSpectrogram(
+        spectrogramCanvas, freqData,
+        runOptions.modelFFTLength, runOptions.modelFFTLength);
 
-      // DEBUG
-      // clearInterval(intervalTask); stopRequested = true; return;
       const inputTensor = getInputTensorFromFrequencyData(freqData);
       const probs = model.predict(inputTensor);
       plotPredictions(probs.dataSync());
