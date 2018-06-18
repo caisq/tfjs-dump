@@ -176,9 +176,8 @@ function handleMicStream(stream) {
 
     analyser.getFloatFrequencyData(freqData);
     if (freqData[0] === -Infinity && freqData[1] === -Infinity) {
-      logToStatusDisplay('Stopped due to -Infinity magnitude.');
-      clearInterval(intervalTask);
-      stopRequested = true;
+      // No signal from microphone. Do nothing.
+      logToStatusDisplay('Warning: -Infinity magnitude.');
       return;
     }
 
