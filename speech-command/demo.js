@@ -32,6 +32,12 @@ let intervalTask = null;
 
 let model;
 
+// Variables for transfer learning.
+let transferModel;
+let transferWords;
+let transferTensors = {};
+let collectWordButtons = {};
+
 function plotPredictions(probabilities) {
   const barWidth = 40;
   const barGap = 10;
@@ -119,18 +125,23 @@ function warmUpModel(numPredictCalls) {
   x.dispose();
 }
 
-function start() {
+function start(collectOneSpeechSample) {
   stopRequested = false;
   navigator.mediaDevices.getUserMedia({audio: true, video: false})
     .then(stream => {
       logToStatusDisplay('getUserMedia() succeeded.');
-      handleMicStream(stream);
+      handleMicStream(stream, collectOneSpeechSample);
     }).catch(err => {
       logToStatusDisplay('getUserMedia() failed: ' + err.message);
     });
 }
 
-function handleMicStream(stream) {
+/**
+ * Handle stream from obtained user media.
+ * @param {*} stream
+ * @param {*} collectOneSpeechSample
+ */
+function handleMicStream(stream, collectOneSpeechSample) {
   if (runOptions.numFrames == null || runOptions.modelFFTLength == null) {
     throw new Error('Load model first!');
   }
@@ -169,7 +180,8 @@ function handleMicStream(stream) {
   logToStatusDisplay(`refractoryPeriodFrames: ${refractoryPeriodFrames}`);
 
   const tracker = new Tracker(waitingPeriodFrames, refractoryPeriodFrames);
-  function draw() {
+
+  function onEveryAudioFrame() {
     if (stopRequested) {
       return;
     }
@@ -195,12 +207,35 @@ function handleMicStream(stream) {
       plotSpectrogram(
         spectrogramCanvas, freqData,
         runOptions.modelFFTLength, runOptions.modelFFTLength);
-
       const inputTensor = getInputTensorFromFrequencyData(freqData);
-      const probs = model.predict(inputTensor);
-      plotPredictions(probs.dataSync());
-      const recogIndex = tf.argMax(probs, -1).dataSync()[0];
-      recogLabel.textContent += words[recogIndex] + ',';
+
+      if (collectOneSpeechSample) {
+        if (transferTensors[collectOneSpeechSample] == null) {
+          transferTensors[collectOneSpeechSample] = [];
+        }
+        transferTensors[collectOneSpeechSample].push(inputTensor);
+        stopRequested = true;
+        clearInterval(intervalTask);
+        collectWordButtons[collectOneSpeechSample].textContent =
+          `Collect "${collectOneSpeechSample}" sample ` +
+          `(${transferTensors[collectOneSpeechSample].length})`;
+        enableAllCollectWordButtons();
+      } else {
+        tf.tidy(() => {
+          const probs = model.predict(inputTensor);
+          plotPredictions(probs.dataSync());
+          const recogIndex = tf.argMax(probs, -1).dataSync()[0];
+          recogLabel.textContent += words[recogIndex] + ',';
+        });
+        tf.tidy(() => {
+          if (transferModel != null) {
+            const probs = transferModel.predict(inputTensor);
+            probs.print();
+            // TODO(cais): Display it on the page, instead of console-logging it.
+          }
+        });
+        inputTensor.dispose();
+      }
     } else if (tracker.isResting()) {
       // Clear prediction plot.
       plotPredictions();
@@ -209,10 +244,9 @@ function handleMicStream(stream) {
     frameCount++;
   }
 
-  setTimeout(() => {
-    intervalTask = setInterval(
-      draw, analyser.frequencyBinCount / audioContext.sampleRate * 1000);
-  }, 50);
+  intervalTask = setInterval(
+    onEveryAudioFrame,
+    analyser.frequencyBinCount / audioContext.sampleRate * 1000);
 }
 
 function getArrayMax(xs) {
@@ -267,3 +301,107 @@ stopButton.addEventListener('click', () => {
   stopButton.disabled = true;
 });
 
+// UI code foro transfer learning.
+const learnWordsInput = document.getElementById('learn-words');
+const enterLearnWordsButton = document.getElementById('enter-learn-words');
+const collectButtonsDiv = document.getElementById('collect-words');
+const startTransferLearnButton =
+  document.getElementById('start-transfer-learn');
+
+enterLearnWordsButton.addEventListener('click', () => {
+  enterLearnWordsButton.disabled = true;
+  transferWords =
+    learnWordsInput.value.trim().split(',').map(w => w.trim());
+  console.log(transferWords);
+
+  for (const word of transferWords) {
+    const button = document.createElement('button');
+    button.textContent = `Collect "${word}" sample (0)`;
+    collectButtonsDiv.appendChild(button);
+    collectWordButtons[word] = button;
+
+    button.addEventListener('click', () => {
+      disableAllCollectWordButtons();
+      currentlyCollectedWord = word;
+      console.log(`Collect one sample of word "${currentlyCollectedWord}"`);
+      start(word);
+    });
+  }
+});
+
+startTransferLearnButton.addEventListener('click', async () => {
+  const [xs, ys] = prepareLearnTensors();
+  await doTransferLearning(xs, ys);
+});
+
+function disableAllCollectWordButtons() {
+  for (const word in collectWordButtons) {
+    collectWordButtons[word].disabled = true;
+  }
+}
+
+function enableAllCollectWordButtons() {
+  for (const word in collectWordButtons) {
+    collectWordButtons[word].disabled = false;
+  }
+}
+
+/**
+ * @returns
+ *   1. xs: A Tensor of shape `[numExamples, numTimeSteps, numFreqSteps]`.
+ *   2. ys: A one-hot encoded target Tensor of shape `[numExamples, numWords]`.
+ */
+function prepareLearnTensors() {
+  return tf.tidy(() => {
+    const numDistinctWords = transferWords.length;
+    let numWords = 0;
+    let xs;
+    let ys;
+    for (let i = 0; i < transferWords.length; ++i) {
+      const word = transferWords[i];
+      for (const tensor of transferTensors[word]) {
+        const yBuffer = tf.buffer([1, numDistinctWords]);
+        yBuffer.set(1, 0, i);
+
+        if (numWords === 0) {
+          xs = tensor;
+          ys = yBuffer.toTensor();
+        } else {
+          xs = tf.concat([xs, tensor], 0);
+          ys = tf.concat([ys, yBuffer.toTensor()], 0);
+        }
+
+        numWords++;
+      }
+    }
+
+    return [xs, ys];
+  });
+}
+
+async function doTransferLearning(xs, ys) {
+  const cutoffLayerIndex = 9;
+  for (let i = 0; i <= cutoffLayerIndex; ++i) {
+    model.layers[i].trainable = false;
+  }
+
+  const cutoffTensor = model.layers[cutoffLayerIndex].output;
+  const newDenseLayer = tf.layers.dense({
+    units: transferWords.length,
+    activation: 'softmax'});
+  const newOutputTensor = newDenseLayer.apply(cutoffTensor);
+
+  transferModel = tf.model({inputs: model.inputs, outputs: newOutputTensor});
+  transferModel.compile({loss: 'categoricalCrossentropy',  optimizer: 'adam'});
+  const history = await transferModel.fit(xs, ys, {
+    epochs: 30,
+    callbacks: {
+      onEpochEnd: async (epoch, log) => {
+        console.log(`epoch = ${epoch}: loss = ${log.loss}`);
+        // TODO(cais): Plot the loss curve on page.
+      }
+    }
+  });
+
+  return history;
+}

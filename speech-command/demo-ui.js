@@ -49,6 +49,7 @@ function plotSpectrum(canvas, freqData, runOptions) {
       instanceMax = val;
     }
   }
+  const yOffset = 0.25 * canvas.width;
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -56,16 +57,18 @@ function plotSpectrum(canvas, freqData, runOptions) {
     instanceMax > runOptions.magnitudeThreshold ? '#00AA00' : '#AAAAAA';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(0, -freqData[0] + 100);
+
+  ctx.moveTo(0, -freqData[0] + yOffset);
   for (let i = 1; i < runOptions.modelFFTLength; ++i) {
-    ctx.lineTo(i, -freqData[i] + 100);
+    ctx.lineTo(i, -freqData[i] + yOffset);
   }
   ctx.stroke();
 
   // Draw the threshold.
   ctx.beginPath();
-  ctx.moveTo(0, -runOptions.magnitudeThreshold + 100);
+  ctx.moveTo(0, -runOptions.magnitudeThreshold + yOffset);
   ctx.lineTo(
-    runOptions.modelFFTLength - 1, -runOptions.magnitudeThreshold + 100);
+    runOptions.modelFFTLength - 1, -runOptions.magnitudeThreshold + yOffset);
   ctx.stroke();
 }
+
