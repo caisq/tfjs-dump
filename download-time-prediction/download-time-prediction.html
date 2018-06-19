@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>title</title>
+  </head>
+  <body>
+    <div>
+      <button id="start-measurement">Start measurement</button>
+    </div>
+    <div>
+      <textarea readonly="true" id="data-display" rows="20"></textarea>
+    </div>
+    <div id="plot-div"></div>
+    <div>
+      <button id="train">Train model</button>
+    </div>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.9.1/underscore-min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <script>
+      const FILE_SIZES_KB =
+          [1, 2, 5, 8, 10, 20, 50, 80, 100, 200, 500, 800, 1000, 2000, 4000,
+           5000, 6000, 7000, 8000, 9000, 10000];
+      const RUNS_PER_SIZE = 5;
+      const FILE_URL_PREFIX =
+        'https://storage.googleapis.com/tfjs-examples/download-time-prediction/files/'
+      const FILE_URL_SUFFIX = '-kb';
+
+      // Format: Array<[fileSize, timeMillis]>;
+      const dataPoints = [];
+
+      const startMeasurementButton = document.getElementById('start-measurement');
+      const dataDisplay = document.getElementById('data-display');
+      const plotDiv = document.getElementById('plot-div');
+
+      startMeasurementButton.addEventListener('click', async () => {
+        // Randomize the download schedule.
+        let downloadSchedule = [];
+        for (let i = 0; i < RUNS_PER_SIZE; ++i) {
+          downloadSchedule.push(...FILE_SIZES_KB);
+        }
+        downloadSchedule = _.shuffle(downloadSchedule);
+        console.log(downloadSchedule);
+
+        for (let i = 0; i < downloadSchedule.length; ++i) {
+          const fileSizeKb = downloadSchedule[i];
+          const downloadURL = `${FILE_URL_PREFIX}${fileSizeKb}${FILE_URL_SUFFIX}`;
+          dataDisplay.textContent =
+              `Measuring ${i + 1} of ${downloadSchedule.length}: ${fileSizeKb}-kb`;
+          const t0 = new Date().getTime();
+          await (await fetch(downloadURL, {cache: 'no-store'})).text();
+          const t1 = new Date().getTime();
+          dataPoints.push([fileSizeKb, t1 - t0]);
+        }
+
+        dataDisplay.textContent = JSON.stringify(dataPoints, null, 2);
+        plotData(dataPoints);
+      });
+
+      function plotData(dataPoints) {
+        const data = {
+          x: [],
+          y: [],
+          mode: 'markers',
+          type: 'scatter'
+        };
+        for (const dataPoint of dataPoints) {
+          data.x.push(dataPoint[0]);
+          data.y.push(dataPoint[1]);
+        }
+        Plotly.plot(plotDiv, [data]);
+      }
+    </script>
+  </body>
+</html>
+
