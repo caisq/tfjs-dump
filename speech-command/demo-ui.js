@@ -6,6 +6,36 @@ function logToStatusDisplay(message) {
   statusDisplay.scrollTop = statusDisplay.scrollHeight;
 }
 
+function plotPredictions(canvas, candidateWords, probabilities) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (probabilities == null) {
+    return;
+  }
+
+  const barWidth = canvas.width / candidateWords.length * 0.8;
+  const barGap = canvas.width / candidateWords.length * 0.2;
+
+  ctx.font = '12px Arial';
+  ctx.beginPath();
+  for (let i = 0; i < candidateWords.length; ++i) {
+    ctx.fillText(
+      candidateWords[i], i * (barWidth + barGap), 0.95 * predictionCanvas.height);
+  }
+  ctx.stroke();
+
+  ctx.beginPath();
+  for (let i = 0; i < probabilities.length; ++i) {
+    const x = i * (barWidth + barGap);
+    ctx.rect(
+      x,
+      predictionCanvas.height * 0.85 * (1 - probabilities[i]),
+      barWidth,
+      predictionCanvas.height * 0.85 * probabilities[i]);
+  }
+  ctx.stroke();
+}
+
 function setUpThresholdSlider(runOptions) {
   const thresholdSlider = document.getElementById('magnitude-threshold');
   thresholdSlider.setAttribute('min', runOptions.magnitudeThresholdMin);

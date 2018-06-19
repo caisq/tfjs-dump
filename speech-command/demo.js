@@ -6,6 +6,8 @@ const mainCanvas = document.getElementById('main-canvas');
 const spectrogramCanvas = document.getElementById('spectrogram-canvas');
 const recogLabel = document.getElementById('recog-label');
 const predictionCanvas = document.getElementById('prediction-canvas');
+const transferPredictionCanvas = document.getElementById('transfer-prediction-canvas');
+const transferLearnHistoryDiv = document.getElementById('transfer-learn-history');
 
 let stopRequested = false;
 
@@ -36,38 +38,8 @@ let model;
 let transferModel;
 let transferWords;
 let transferTensors = {};
+let collectWordDivs = {};
 let collectWordButtons = {};
-
-function plotPredictions(probabilities) {
-  const barWidth = 40;
-  const barGap = 10;
-
-  const ctx = predictionCanvas.getContext('2d');
-  ctx.clearRect(0, 0, predictionCanvas.width, predictionCanvas.height);
-
-  ctx.font = '15px Arial';
-  ctx.beginPath();
-  for (let i = 0; i < words.length; ++i) {
-    ctx.fillText(
-      words[i], i * (barWidth + barGap), 0.95 * predictionCanvas.height);
-  }
-  ctx.stroke();
-
-  if (probabilities == null) {
-    return;
-  }
-
-  ctx.beginPath();
-  for (let i = 0; i < probabilities.length; ++i) {
-    const x = i * (barWidth + barGap);
-    ctx.rect(
-      x,
-      predictionCanvas.height * 0.85 * (1 - probabilities[i]),
-      barWidth,
-      predictionCanvas.height * 0.85 * probabilities[i]);
-  }
-  ctx.stroke();
-}
 
 loadModelButton.addEventListener('click', async () => {
   const modelJSONSuffix = 'model.json';
@@ -111,6 +83,8 @@ loadModelButton.addEventListener('click', async () => {
   logToStatusDisplay(`Loaded ${words.length} words: ` + words);
 
   startButton.disabled = false;
+  enterLearnWordsButton.disabled = false;
+  startTransferLearnButton.disabled = false;
 });
 
 function warmUpModel(numPredictCalls) {
@@ -210,35 +184,50 @@ function handleMicStream(stream, collectOneSpeechSample) {
       const inputTensor = getInputTensorFromFrequencyData(freqData);
 
       if (collectOneSpeechSample) {
+        stopRequested = true;
+        clearInterval(intervalTask);
+
         if (transferTensors[collectOneSpeechSample] == null) {
           transferTensors[collectOneSpeechSample] = [];
         }
         transferTensors[collectOneSpeechSample].push(inputTensor);
-        stopRequested = true;
-        clearInterval(intervalTask);
         collectWordButtons[collectOneSpeechSample].textContent =
           `Collect "${collectOneSpeechSample}" sample ` +
           `(${transferTensors[collectOneSpeechSample].length})`;
         enableAllCollectWordButtons();
+        const wordDiv = collectWordDivs[collectOneSpeechSample];
+        const newCanvas = document.createElement('canvas');
+        newCanvas.style['display'] = 'inline-block';
+        newCanvas.style['vertical-align'] = 'middle';
+        newCanvas.style['height'] = '100px';
+        newCanvas.style['width'] = '150px';
+        newCanvas.style['padding'] = '5px';
+        wordDiv.appendChild(newCanvas);
+        plotSpectrogram(
+          newCanvas, freqData,
+          runOptions.modelFFTLength, runOptions.modelFFTLength);
       } else {
         tf.tidy(() => {
           const probs = model.predict(inputTensor);
-          plotPredictions(probs.dataSync());
+          plotPredictions(predictionCanvas, words, probs.dataSync());
           const recogIndex = tf.argMax(probs, -1).dataSync()[0];
           recogLabel.textContent += words[recogIndex] + ',';
         });
-        tf.tidy(() => {
-          if (transferModel != null) {
-            const probs = transferModel.predict(inputTensor);
-            probs.print();
-            // TODO(cais): Display it on the page, instead of console-logging it.
-          }
-        });
+        if (transferModel != null) {
+          tf.tidy(() => {
+            const transferProbs = transferModel.predict(inputTensor);
+            transferProbs.print();
+            plotPredictions(
+              transferPredictionCanvas, transferWords,
+              transferProbs.dataSync());
+          });
+        }
         inputTensor.dispose();
       }
     } else if (tracker.isResting()) {
       // Clear prediction plot.
-      plotPredictions();
+      plotPredictions(predictionCanvas);
+      plotPredictions(transferPredictionCanvas);
     }
 
     frameCount++;
@@ -315,9 +304,16 @@ enterLearnWordsButton.addEventListener('click', () => {
   console.log(transferWords);
 
   for (const word of transferWords) {
+    const wordDiv = document.createElement('div');
+    wordDiv.style['border'] = 'solid 1px'
     const button = document.createElement('button');
+    button.style['display'] = 'inline-block';
+    button.style['vertical-align'] = 'middle';
     button.textContent = `Collect "${word}" sample (0)`;
-    collectButtonsDiv.appendChild(button);
+    wordDiv.appendChild(button);
+    wordDiv.style['height'] = '100px';
+    collectButtonsDiv.appendChild(wordDiv);
+    collectWordDivs[word] = wordDiv;
     collectWordButtons[word] = button;
 
     button.addEventListener('click', () => {
@@ -393,12 +389,26 @@ async function doTransferLearning(xs, ys) {
 
   transferModel = tf.model({inputs: model.inputs, outputs: newOutputTensor});
   transferModel.compile({loss: 'categoricalCrossentropy',  optimizer: 'adam'});
+
+  const numEpochs = 40;
+  const plotData = {
+    x: [],
+    y: [],
+    type: 'scatter',
+  };
+  const plotLayout = {
+    xaxis: {range: [0, numEpochs], title: 'Epoch #'},
+    yaxis: {title: 'Train loss'},
+  };
   const history = await transferModel.fit(xs, ys, {
-    epochs: 30,
+    epochs: numEpochs,
     callbacks: {
       onEpochEnd: async (epoch, log) => {
+        plotData.x.push(epoch + 1);
+        plotData.y.push(log.loss);
+        Plotly.newPlot(transferLearnHistoryDiv, [plotData], plotLayout);
+        await tf.nextFrame();
         console.log(`epoch = ${epoch}: loss = ${log.loss}`);
-        // TODO(cais): Plot the loss curve on page.
       }
     }
   });
