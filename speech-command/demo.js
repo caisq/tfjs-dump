@@ -100,6 +100,15 @@ async function loadModelAndMetadataAndWarmUpModel(loadFromRemote) {
   startButton.disabled = false;
   enterLearnWordsButton.disabled = false;
   startTransferLearnButton.disabled = false;
+
+  // 4. If model has more than one heads, load the transfer words.
+  if (model.outputs.length > 1) {
+    transferWords =
+        JSON.parse(localStorage.getItem(TRANSFER_WORDS_SAVE_LOCATION));
+    learnWordsInput.value = transferWords.join(',');
+    logToStatusDisplay(
+        `Loaded transfer learned words: ${JSON.stringify(transferWords)}`);
+  }
 }
 
 function warmUpModel(numPredictCalls) {
@@ -323,7 +332,6 @@ enterLearnWordsButton.addEventListener('click', () => {
   enterLearnWordsButton.disabled = true;
   transferWords =
     learnWordsInput.value.trim().split(',').map(w => w.trim());
-  console.log(transferWords);
 
   for (const word of transferWords) {
     const wordDiv = document.createElement('div');
@@ -341,7 +349,8 @@ enterLearnWordsButton.addEventListener('click', () => {
     button.addEventListener('click', () => {
       disableAllCollectWordButtons();
       currentlyCollectedWord = word;
-      console.log(`Collect one sample of word "${currentlyCollectedWord}"`);
+      logToStatusDisplay(
+          `Collect one sample of word "${currentlyCollectedWord}"`);
       start(word);
     });
   }
