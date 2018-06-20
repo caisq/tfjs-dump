@@ -79,7 +79,7 @@ function plotSpectrum(canvas, freqData, runOptions) {
       instanceMax = val;
     }
   }
-  const yOffset = 0.25 * canvas.width;
+  const yOffset = 0.1 * canvas.height;
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);

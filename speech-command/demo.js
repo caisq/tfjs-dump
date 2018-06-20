@@ -13,6 +13,8 @@ let stopRequested = false;
 
 let words;
 
+const TWO_HEADED_MODEL_SAVE_LOCATION = 'indexeddb://two-headed-model';
+
 // Setup slider for magnitude threshold.
 const runOptions = {
   magnitudeThreshold: -35,
@@ -35,7 +37,7 @@ let intervalTask = null;
 let model;
 
 // Variables for transfer learning.
-let transferModel;
+let twoHeadedModel;
 let transferWords;
 let transferTensors = {};
 let collectWordDivs = {};
@@ -120,6 +122,7 @@ function handleMicStream(stream, collectOneSpeechSample) {
     throw new Error('Load model first!');
   }
 
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
   const audioContext = new AudioContext();
   logToStatusDisplay(`audioContext.sampleRate = ${audioContext.sampleRate}`);
   if (audioContext.sampleRate !== runOptions.sampleRate) {
@@ -207,19 +210,26 @@ function handleMicStream(stream, collectOneSpeechSample) {
           newCanvas, freqData,
           runOptions.modelFFTLength, runOptions.modelFFTLength);
       } else {
-        tf.tidy(() => {
-          const probs = model.predict(inputTensor);
-          plotPredictions(predictionCanvas, words, probs.dataSync());
-          const recogIndex = tf.argMax(probs, -1).dataSync()[0];
-          recogLabel.textContent += words[recogIndex] + ',';
-        });
-        if (transferModel != null) {
+        if (twoHeadedModel == null) {
+          // No transfer learning has occurred; no transfer learned model
+          // has been saved in IndexedDB.
           tf.tidy(() => {
-            const transferProbs = transferModel.predict(inputTensor);
-            transferProbs.print();
+            const probs = model.predict(inputTensor);
+            plotPredictions(predictionCanvas, words, probs.dataSync());
+            const recogIndex = tf.argMax(probs, -1).dataSync()[0];
+            recogLabel.textContent += words[recogIndex] + ',';
+          });
+        } else {
+          tf.tidy(() => {
+            const probs = twoHeadedModel.predict(inputTensor);
+            const oldWordProbs = probs[0];
+            const transferWordProbs = probs[1];
+            plotPredictions(predictionCanvas, words, oldWordProbs.dataSync());
+            const recogIndex = tf.argMax(oldWordProbs, -1).dataSync()[0];
+            recogLabel.textContent += words[recogIndex] + ',';
             plotPredictions(
-              transferPredictionCanvas, transferWords,
-              transferProbs.dataSync());
+                transferPredictionCanvas, transferWords,
+                transferWordProbs.dataSync());
           });
         }
         inputTensor.dispose();
@@ -387,7 +397,7 @@ async function doTransferLearning(xs, ys) {
     activation: 'softmax'});
   const newOutputTensor = newDenseLayer.apply(cutoffTensor);
 
-  transferModel = tf.model({inputs: model.inputs, outputs: newOutputTensor});
+  const transferModel = tf.model({inputs: model.inputs, outputs: newOutputTensor});
   transferModel.compile({loss: 'categoricalCrossentropy',  optimizer: 'adam'});
 
   const numEpochs = 40;
@@ -412,6 +422,15 @@ async function doTransferLearning(xs, ys) {
       }
     }
   });
+
+  twoHeadedModel = tf.model({
+    inputs: model.inputs,
+    outputs: model.outputs.concat(transferModel.outputs),
+  });
+  const saveResult = await twoHeadedModel.save(TWO_HEADED_MODEL_SAVE_LOCATION);
+  console.log('saveResult:', saveResult);
+
+  // TODO(cais): Save transfer words in localstorage.
 
   return history;
 }
