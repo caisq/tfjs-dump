@@ -13,8 +13,6 @@ let stopRequested = false;
 
 let words;
 
-const TWO_HEADED_MODEL_SAVE_LOCATION = 'indexeddb://two-headed-model';
-
 // Setup slider for magnitude threshold.
 const runOptions = {
   magnitudeThreshold: -35,
@@ -37,27 +35,35 @@ let intervalTask = null;
 let model;
 
 // Variables for transfer learning.
-let twoHeadedModel;
 let transferWords;
 let transferTensors = {};
 let collectWordDivs = {};
 let collectWordButtons = {};
 
 loadModelButton.addEventListener('click', async () => {
+  loadModelButton.disabled = true;
+  await loadModelAndMetadataAndWarmUpModel(true);
+  saveModelToLocalButton.disabled = false;
+});
+
+async function loadModelAndMetadataAndWarmUpModel(loadFromRemote) {
   const modelJSONSuffix = 'model.json';
   const metadataJSONSuffix = 'metadata.json';
 
-  loadModelButton.disabled = true;
-
   // 1. Load model.
-  const loadModelFrom = modelURLInput.value;
-  if (loadModelFrom.indexOf(modelJSONSuffix) !==
-      loadModelFrom.length - modelJSONSuffix.length) {
-    alert(`Model URL must end in ${modelJSONSuffix}.`);
+  let loadModelFrom;
+  if (loadFromRemote) {
+    loadModelFrom = modelURLInput.value;
+    if (loadModelFrom.indexOf(modelJSONSuffix) !==
+        loadModelFrom.length - modelJSONSuffix.length) {
+      alert(`Model URL must end in ${modelJSONSuffix}.`);
+    }
+
+    logToStatusDisplay('Loading model...');
+  } else {
+    loadModelFrom = LOCAL_MODEL_SAVE_LOCATION;
   }
 
-
-  logToStatusDisplay('Loading model...');
   model = await tf.loadModel(loadModelFrom);
   const inputShape = model.inputs[0].shape;
   runOptions.numFrames = inputShape[1];
@@ -72,22 +78,29 @@ loadModelButton.addEventListener('click', async () => {
   warmUpModel(3);
 
   // 3. Load the words and frameSize.
-  const loadMetadataFrom = loadModelFrom.slice(
-    0, loadModelFrom.length - modelJSONSuffix.length) + metadataJSONSuffix;
+  let metadataJSON;
+  if (loadFromRemote) {
+    const loadMetadataFrom = loadModelFrom.slice(
+        0, loadModelFrom.length - modelJSONSuffix.length) +
+        metadataJSONSuffix;
+    metadataJSON = await (await fetch(loadMetadataFrom)).json();
+  } else {
+    metadataJSON = JSON.parse(localStorage.getItem(MODEL_METADATA_SAVE_LOCATION));
+  }
 
-  const metadataJSON = await (await fetch(loadMetadataFrom)).json();
   if (runOptions.frameSize !== Number.parseInt(metadataJSON.frameSize)) {
     throw new Error(
       `Unexpected frame size from model: ${metadataJSON.frameSize}`);
   }
   words = metadataJSON.words;
+
   logToStatusDisplay('frameSize: ' + runOptions.frameSize);
   logToStatusDisplay(`Loaded ${words.length} words: ` + words);
 
   startButton.disabled = false;
   enterLearnWordsButton.disabled = false;
   startTransferLearnButton.disabled = false;
-});
+}
 
 function warmUpModel(numPredictCalls) {
   const inputShape = model.inputs[0].shape;
@@ -210,18 +223,17 @@ function handleMicStream(stream, collectOneSpeechSample) {
           newCanvas, freqData,
           runOptions.modelFFTLength, runOptions.modelFFTLength);
       } else {
-        if (twoHeadedModel == null) {
-          // No transfer learning has occurred; no transfer learned model
-          // has been saved in IndexedDB.
-          tf.tidy(() => {
+        tf.tidy(() => {
+          if (model.outputs.length === 1) {
+            // No transfer learning has occurred; no transfer learned model
+            // has been saved in IndexedDB.
             const probs = model.predict(inputTensor);
             plotPredictions(predictionCanvas, words, probs.dataSync());
             const recogIndex = tf.argMax(probs, -1).dataSync()[0];
             recogLabel.textContent += words[recogIndex] + ',';
-          });
-        } else {
-          tf.tidy(() => {
-            const probs = twoHeadedModel.predict(inputTensor);
+          } else {
+            // This is a two headed model from transfer learning.
+            const probs = model.predict(inputTensor);
             const oldWordProbs = probs[0];
             const transferWordProbs = probs[1];
             plotPredictions(predictionCanvas, words, oldWordProbs.dataSync());
@@ -230,8 +242,8 @@ function handleMicStream(stream, collectOneSpeechSample) {
             plotPredictions(
                 transferPredictionCanvas, transferWords,
                 transferWordProbs.dataSync());
-          });
-        }
+          }
+        });
         inputTensor.dispose();
       }
     } else if (tracker.isResting()) {
@@ -423,14 +435,73 @@ async function doTransferLearning(xs, ys) {
     }
   });
 
-  twoHeadedModel = tf.model({
+  model = tf.model({
     inputs: model.inputs,
     outputs: model.outputs.concat(transferModel.outputs),
   });
-  const saveResult = await twoHeadedModel.save(TWO_HEADED_MODEL_SAVE_LOCATION);
-  console.log('saveResult:', saveResult);
 
   // TODO(cais): Save transfer words in localstorage.
 
   return history;
 }
+
+// Logic related to saving, loading and deleting local model.
+const LOCAL_MODEL_SAVE_LOCATION = 'indexeddb://local-audio-model';
+const MODEL_METADATA_SAVE_LOCATION = 'audio-model-metadata';
+const TRANSFER_WORDS_SAVE_LOCATION = 'audio-model-transfer-words';
+
+const loadModelFromLocalButton = document.getElementById('load-model-from-local');
+const saveModelToLocalButton = document.getElementById('save-model-to-local');
+const deleteModelFromLocalButton = document.getElementById('delete-model-from-local');
+
+saveModelToLocalButton.addEventListener('click', async () => {
+  // Save metadata: original words and frame size.
+  const metadata = {
+    frameSize: runOptions.frameSize,
+    words: words
+  };
+  localStorage.setItem(
+      MODEL_METADATA_SAVE_LOCATION, JSON.stringify(metadata));
+
+  if (model.outputs.length > 1) {
+    // Save transfer words.
+    localStorage.setItem(
+        TRANSFER_WORDS_SAVE_LOCATION, JSON.stringify(transferWords));
+  }
+
+  const saveResult = await model.save(LOCAL_MODEL_SAVE_LOCATION);
+  logToStatusDisplay(
+      `Saved model with ${model.outputs.length} output(s) to ` +
+      `${LOCAL_MODEL_SAVE_LOCATION} at ` +
+      `${saveResult.modelArtifactsInfo.dateSaved}`);
+});
+
+async function refreshLocalModelStatus() {
+  const modelsInfo = await tf.io.listModels();
+  if (modelsInfo[LOCAL_MODEL_SAVE_LOCATION] == null) {
+    logToStatusDisplay('No locally-saved model is found.');
+    loadModelFromLocalButton.disabled = true;
+    deleteModelFromLocalButton.disabled = true;
+  } else {
+    logToStatusDisplay(
+      `Locally-saved model available: saved at ` +
+      `${modelsInfo[LOCAL_MODEL_SAVE_LOCATION].dateSaved}`);
+    loadModelFromLocalButton.disabled = false;
+    deleteModelFromLocalButton.disabled = false;
+  }
+}
+
+refreshLocalModelStatus();
+
+loadModelFromLocalButton.addEventListener('click', () => {
+  loadModelAndMetadataAndWarmUpModel(false);
+  saveModelToLocalButton.disabled = false;
+  startButton.disabled = false;
+});
+
+deleteModelFromLocalButton.addEventListener('click', async () => {
+  await tf.io.removeModel(LOCAL_MODEL_SAVE_LOCATION);
+  localStorage.removeItem(MODEL_METADATA_SAVE_LOCATION);
+  localStorage.removeItem(TRANSFER_WORDS_SAVE_LOCATION);
+  await refreshLocalModelStatus();
+});
