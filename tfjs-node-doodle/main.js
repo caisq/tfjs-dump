@@ -6,6 +6,8 @@ require('@tensorflow/tfjs-node');
   model.add(tf.layers.dense({units: 10, inputShape: [5], activation: 'relu'}));
   model.add(tf.layers.dense({units: 4, activation: 'softmax'}));
 
+  model.summary();
+
   const xs = tf.ones([2, 5]);
   model.predict(xs).print();
 
