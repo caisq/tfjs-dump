@@ -65,6 +65,7 @@ async function loadModelAndMetadataAndWarmUpModel(loadFromRemote) {
   }
 
   model = await tf.loadModel(loadModelFrom);
+  model.summary();
   const inputShape = model.inputs[0].shape;
   runOptions.numFrames = inputShape[1];
   runOptions.modelFFTLength = inputShape[2];
