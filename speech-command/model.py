@@ -33,6 +33,69 @@ def create_model(input_shape, num_classes):
       optimizer=tf.train.GradientDescentOptimizer(0.01),
       metrics=['accuracy'])
   model.summary()
+
+  # Equivalent TensorFlow.js code:
+  #
+  # ```javascript
+  # const model = tf.sequential();
+  # model.add(tf.layers.conv2d({
+  #   filters: 8,
+  #   kernelSize: [2, 8],
+  #   activation: 'relu',
+  #   inputShape: inputShape
+  # }));
+  # model.add(tf.layers.maxPooling2d({
+  #   poolSize: [2, 2],
+  #   strides: [2, 2]
+  # }));
+  # model.add(tf.layers.conv2d({
+  #   filters: 32,
+  #   kernelSize: [2, 4],
+  #   activation: 'relu'
+  # }));
+  # model.add(tf.layers.maxPooling2d({
+  #   poolSize: [2, 2],
+  #   strides: [2, 2]
+  # }));
+  # model.add(tf.layers.conv2d({
+  #   filters: 32,
+  #   kernelSize: [2, 4],
+  #   activation: 'relu'
+  # }));
+  # model.add(tf.layers.maxPooling2d({
+  #   poolSize: [2, 2],
+  #   strides: [2, 2]
+  # }));
+  # model.add(tf.layers.conv2d({
+  #   filters: 32,
+  #   kernelSize: [2, 4],
+  #   activation: 'relu'
+  # }));
+  # model.add(tf.layers.maxPooling2d({
+  #   poolSize: [2, 2],
+  #   strides: [1, 2]
+  # }));
+  # model.add(tf.layers.flatten({}));
+  # model.add(tf.layers.dense({
+  #   units: 2000,
+  #   activation: 'relu'
+  # }));
+  # model.add(tf.layers.dropout({
+  #   rate: 0.5
+  # }));
+  # model.add(tf.layers.dense({
+  #   units: numClasses,
+  #   activation: 'softmax'
+  # }));
+  #
+  # model.compile({
+  #   loss: 'categoricalCrossentropy',
+  #   optimizer: tf.train.sgd(0.01),
+  #   metrics: ['accuracy']
+  # });
+  # model.summary();
+  # ```
+
   return model
 
 
