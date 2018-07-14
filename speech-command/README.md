@@ -48,6 +48,20 @@ generated with `prep_wav.py` in step 1. At the end of the conversion, you will
 get a downloaded .dat file. This file contains the spectrograms from all the
 files you selected.
 
+## 3. Train model.
+
+### 3.1. Using Keras (Python)
+
+Usage example:
+
+```sh
+python model.py "${HOME}/ml-data/speech-command-browser" 1024 44100 5000
+```
+
+### 3.2. Using TensorFlow.js (Node.js)
+
+TODO(cais): Add this.
+
 ### Running inference with a pre-trained model
 
 Click the "Load pretrained model" button to load a pretrained Keras model as

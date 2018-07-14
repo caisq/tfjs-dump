@@ -9,8 +9,6 @@ import struct
 from matplotlib import pyplot as plt
 import numpy as np
 
-LABELS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'zero',
-          'left', 'right', 'go', 'stop']
 
 NUM_FRAMES_CUTOFF = 43
 MAX_SPEC_VALUE_LOWER_BOUND = 20
@@ -34,8 +32,8 @@ def normalize(spec):
   return (spec - np.mean(spec)) / np.std(spec)
 
 
-def to_one_hot(labels):
-  out = np.zeros([len(labels), len(LABELS)], dtype=np.float32)
+def to_one_hot(labels, unique_labels):
+  out = np.zeros([len(labels), len(unique_labels)], dtype=np.float32)
   for i, label in enumerate(labels):
     out[i, label] = 1.0
   return out
@@ -43,10 +41,27 @@ def to_one_hot(labels):
 
 def load_spectrograms(dat_path,
                       label,
+                      unique_labels,
                       n_fft,
                       sampling_frequency_hz,
                       max_frequency_hz):
   '''
+  Load spectrograms from a .dat file.
+
+  It is assumed that all the examples in the .dat file have the same label.
+
+  Args:
+    dat_path: Path to the .dat file.
+    label: Label for all the examples in the .dat file.
+    unique_labels: All unique labels in the entire dataset, i.e., the dataset
+      of which `dat_path` is a part.
+    n_fft: Number of FFT points for each time slice. This corresponds to
+      half the sampling frequency.
+    sampling_frequency_hz: Sampling frequency of the spectrogram in the data,
+      in Hz.
+    max_frequency_hz: Maximum frequency to be used in the deep-learning model,
+      in Hz.
+
   Returns:
     A `list` of 2D numpy arrays.
   '''
@@ -104,7 +119,7 @@ def load_spectrograms(dat_path,
   print('  Kept: %d; Discarded: %d' % (num_kept, num_discarded))
   # print('  Length min: %d, max: %d' % (np.min(spec_lengths), np.max(spec_lengths)))
   specs = np.expand_dims(np.swapaxes(np.array(specs, dtype=np.float32), 1, 2), -1)
-  return specs, to_one_hot(labels)
+  return specs, to_one_hot(labels, unique_labels)
 
 
 def load_data(root_dir, n_fft, sampling_frequency_hz, max_frequency_hz):
@@ -130,13 +145,20 @@ def load_data(root_dir, n_fft, sampling_frequency_hz, max_frequency_hz):
   '''
   xs = None
   ys = None
-  for i, label in enumerate(LABELS):
+
+  unique_labels = sorted([
+      os.path.basename(path) for path in glob.glob(os.path.join(root_dir, '*'))
+      if os.path.isdir(path)])
+  print('Unique labels = %s' % unique_labels)
+
+  for i, label in enumerate(unique_labels):
     label_dir = os.path.join(root_dir, label)
     dat_paths = sorted(glob.glob(os.path.join(label_dir, '*.dat')))
     for dat_path in dat_paths:
       print('Loading spectrograms from %s' % dat_path)
       file_xs, file_ys = load_spectrograms(
-          dat_path, i, n_fft,  sampling_frequency_hz, max_frequency_hz)
+          dat_path, i, unique_labels,
+          n_fft, sampling_frequency_hz, max_frequency_hz)
       assert(file_xs.shape[0] == file_ys.shape[0])
       if xs is None:
         xs = file_xs
