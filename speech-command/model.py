@@ -1,3 +1,10 @@
+"""
+Usage example:
+
+```sh
+python model.py "${HOME}/ml-data/speech-command-browser" 1024 44100 5000
+```
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -99,14 +106,16 @@ def create_model(input_shape, num_classes):
   return model
 
 
-def train_model(root_dir, debug=False):
-  # model = create_model([43, 360, 1], 4)
-  # root_dir = '/usr/local/google/home/cais/ml-data/speech-command-browser'
-  xs, ys = data.load_data(os.path.expanduser(root_dir))
+def train_model(root_dir,
+                n_fft,
+                sampling_frequency_hz,
+                max_frequency_hz, debug=False):
+  xs, ys = data.load_data(
+      os.path.expanduser(root_dir),
+      n_fft, sampling_frequency_hz, max_frequency_hz)
 
   input_shape = xs.shape[1:]
   num_classes = ys.shape[-1]
-
   print('input_shape = %s' % (input_shape,))
   print('num_classes = %s' % num_classes)
 
@@ -129,10 +138,24 @@ def train_model(root_dir, debug=False):
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser('Train model for browser speech commands.')
-  parser.add_argument('data_root', type=str,
-                      help='Root directory for data.')
-  parser.add_argument('--tf_debug', action='store_true',
-                      help='Use TensroFlow Debugger')
+  parser.add_argument(
+      'data_root', type=str, help='Root directory for data.')
+  parser.add_argument(
+      'n_fft', type=int,
+      help='Number of FFT points. By Nyquist theorem, this corresponds to '
+      'half of the sampling frequency.')
+  parser.add_argument(
+      'sampling_frequency_hz', type=float,
+      help='Sampling frequency in the data files, in Hz.')
+  parser.add_argument(
+      'max_frequency_hz', type=float,
+      help='Maximum frequency to use in the spectrograms, in Hz.')
+  parser.add_argument(
+      '--tf_debug', action='store_true',
+      help='Use TensroFlow Debugger CLI.')
   parsed = parser.parse_args()
 
-  train_model(parsed.data_root, debug=parsed.tf_debug)
+  train_model(
+      parsed.data_root,
+      parsed.n_fft, parsed.sampling_frequency_hz, parsed.max_frequency_hz,
+      debug=parsed.tf_debug)
