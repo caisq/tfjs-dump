@@ -18,6 +18,7 @@ dataset at 'path/to/speech_command_data'. Use the following command:
 python prep_wav.py \
     --words zero,one,two,three,four,five,six,seven,eight,nine,left,right,up,down,go,stop \
     --test_split 0.15 \
+    --include_noise \
     path/to/speech_command_data \
     path/to/converted/data
 ```

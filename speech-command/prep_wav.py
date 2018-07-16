@@ -13,6 +13,9 @@ from scipy.io import wavfile
 from scipy.signal import resample
 
 
+_BACKGROUND_NOISE_DIR = '_background_noise_'
+
+
 def read_wav_as_floats(wav_path, target_fs):
   '''Read audio signal from wav file and resample it to target frequency.
 
@@ -31,6 +34,52 @@ def read_wav_as_floats(wav_path, target_fs):
   resampled_x = resample(signal, target_num_samples)
 
   return resampled_x
+
+
+def generate_noise_examples(noise_wav_path,
+                            num_examples,
+                            recordings_per_subfolder,
+                            target_fs,
+                            sample_length,
+                            out_dir,
+                            begin_file_index=0):
+  '''Load examples from a raw noise .wav file.
+
+  Args:
+    noise_wav_path: Path to the raw noise .wav file.
+    num_examples: Number of examples to extract from the .wav file.
+    recordings_per_subfolder: Number of .dat files per output subfolder.
+    target_fs: Target sampling frequency in Hz.
+    sample_length: Length (in number of PCM samples) per example.
+    out_dir: Output directory.
+    begin_file_index: Begin naming output files at.
+  '''
+  print('In generate_noise_examples')
+  print('noise_wav_path = %s; num_examples = %s' %
+        (noise_wav_path, num_examples))
+  print('Reading %s...' % noise_wav_path)
+  # samples = read_wav_as_floats(noise_wav_path, target_fs)
+  fs, signal = wavfile.read(noise_wav_path)
+  fs_multiplier = target_fs / fs
+  sample_length_0 = int(np.ceil(sample_length / fs_multiplier))
+  max_begin_index = len(signal) - sample_length_0
+
+  begin_indices = np.random.randint(0, max_begin_index, num_examples)
+  for i, begin_index in enumerate(begin_indices):
+    subfolder = os.path.join(
+        out_dir,
+        '%d' % int(math.floor(
+            (i + begin_file_index) / recordings_per_subfolder)))
+    if not os.path.isdir(subfolder):
+      os.makedirs(subfolder)
+
+    out_data_path = os.path.join(subfolder, '%.5d.dat' % (i + begin_file_index))
+    waveform = signal[begin_index : begin_index + sample_length_0]
+    resampled_waveform = resample(waveform, sample_length)
+    with open(out_data_path, 'wb') as out_file:
+      out_file.write(struct.pack(
+          'f' * len(resampled_waveform), *resampled_waveform))
+    print('--> %s' % out_data_path)
 
 
 def load_and_normalize_waveform(wav_path, target_fs, frame_size):
@@ -102,6 +151,10 @@ def convert_wav_files_in_dir(input_dir,
       as test data. If specified, test_output_dir must also be specified, else
       a ValueError will be thrown. Must be a number between 0.0 and 1.0.
     test_output_dir: Output directory for test data.
+
+  Returns:
+    - The number of training examples.
+    - The number of test examples.
   '''
   if os.path.isfile(output_dir):
     raise ValueError(
@@ -132,6 +185,8 @@ def convert_wav_files_in_dir(input_dir,
     train_wav_paths = [in_wav_paths[i] for i in indices[:num_train]]
     test_wav_paths = [in_wav_paths[i] for i in indices[num_train:]]
 
+  num_train_examples = 0
+  num_test_examples = 0
   for n in range(2):
     if n == 0:
       split_in_path = train_wav_paths
@@ -160,6 +215,12 @@ def convert_wav_files_in_dir(input_dir,
         print('  Skipped %s due to length mismatch (%d != %d)' % (
             in_path, converted_len, match_len))
         os.remove(out_path)
+      if n == 0:
+        num_train_examples += 1
+      else:
+        num_test_examples += 1
+
+  return num_train_examples, num_test_examples
 
 
 if __name__ == '__main__':
@@ -176,6 +237,9 @@ if __name__ == '__main__':
       help='Words to get from `output_data_path`, seperated by commas. '
       'It is assumes that subdirectories with the same names as the words '
       'exist under `output_data_path`. No dupicates are allowed.')
+  parser.add_argument(
+      '--include_noise', action='store_true',
+      help='Include samples of silence in the data.')
   parser.add_argument(
       '--test_split', type=float, default=0.15,
       help='The fraction of files to split out for testing. Must be a '
@@ -199,11 +263,15 @@ if __name__ == '__main__':
 
   xs = []
   if os.path.isdir(parsed.input_wav_path):
+    nums_train_examples = []
+    nums_test_examples = []
     if parsed.words is None:
-      convert_wav_files_in_dir(
+      num_train_examples, num_test_examples = convert_wav_files_in_dir(
           parsed.input_wav_path, parsed.output_data_path,
           parsed.recordings_per_subfolder, parsed.target_fs,
           parsed.frame_size, parsed.match_len)
+      nums_train_examples.append(num_train_examples)
+      nums_test_examples.append(num_test_examples)
     else:
       words = parsed.words.strip().split(',')
       words = [word.strip() for word in words]
@@ -225,22 +293,55 @@ if __name__ == '__main__':
         os.makedirs(parsed.output_data_path)
 
       train_base = os.path.join(parsed.output_data_path, 'train')
-      if not os.path.isdir(train_base):
-        os.makedirs(train_base)
       test_base = os.path.join(parsed.output_data_path, 'test')
-      if not os.path.isdir(test_base):
-        os.makedirs(test_base)
+      if os.path.isdir(train_base) or os.path.isdir(test_base):
+        raise ValueError('train or test subdirectory already exists.')
+      os.makedirs(train_base)
+      os.makedirs(test_base)
 
       for word in words:
         word_input_dir = os.path.join(parsed.input_wav_path, word)
         train_out_dir = os.path.join(train_base, word)
         test_out_dir = os.path.join(test_base, word)
-        convert_wav_files_in_dir(
+        num_train_examples, num_test_examples = convert_wav_files_in_dir(
             word_input_dir, train_out_dir,
             parsed.recordings_per_subfolder, parsed.target_fs,
             parsed.frame_size, parsed.match_len,
             parsed.test_split, test_out_dir)
+        nums_train_examples.append(num_train_examples)
+        nums_test_examples.append(num_test_examples)
+
+    if parsed.include_noise:
+      # Generate noise examples.
+      num_train_noise_examples = int(np.round(np.mean(nums_train_examples)))
+      num_test_noise_examples = int(np.round(np.mean(nums_test_examples)))
+      print('num_train_noise_examples = %d; num_test_noise_examples = %d' % (
+          num_train_noise_examples, num_test_noise_examples))
+      raw_noise_wav_paths = sorted(glob.glob(
+          os.path.join(parsed.input_wav_path, _BACKGROUND_NOISE_DIR, '*.wav')))
+      for split in ('train', 'test'):
+        if split == 'train':
+          num_examples = num_train_noise_examples
+        else:
+          num_examples = num_test_noise_examples
+        num_examples //= len(raw_noise_wav_paths)
+        begin_file_index = 0
+        for raw_noise_wav_path in raw_noise_wav_paths:
+          out_dir = os.path.join(
+              parsed.output_data_path, split, _BACKGROUND_NOISE_DIR)
+          if not os.path.isdir(out_dir):
+            os.makedirs(out_dir)
+          generate_noise_examples(
+              raw_noise_wav_path, num_examples, parsed.recordings_per_subfolder,
+              parsed.target_fs, parsed.match_len, out_dir,
+              begin_file_index=begin_file_index)
+          begin_file_index += num_examples
   else:
+    if parsed.include_noise:
+      raise ValueError(
+          '--include_noise should be used only with input_wav_path '
+          'as a directory.')
+
     input_wav_paths = parsed.input_wav_path.split(',')
 
     xs = []
@@ -253,3 +354,4 @@ if __name__ == '__main__':
 
     with open(parsed.output_data_path, 'wb') as f:
       f.write(struct.pack('f' * len(xs), *xs))
+
