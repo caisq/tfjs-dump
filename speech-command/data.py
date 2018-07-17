@@ -138,6 +138,7 @@ def load_data(root_dir, n_fft, sampling_frequency_hz, max_frequency_hz):
       in Hz.
 
   Returns:
+    - Unique word labels as a `list` of `str`s.
     - `xs`: numpy array for the input features, of shape
       `[num_examples, time_steps, freq_steps, 1]`.
     - `ys`: numpy array for the one-hot encoded labels, of shape
@@ -149,7 +150,8 @@ def load_data(root_dir, n_fft, sampling_frequency_hz, max_frequency_hz):
   unique_labels = sorted([
       os.path.basename(path) for path in glob.glob(os.path.join(root_dir, '*'))
       if os.path.isdir(path)])
-  print('Unique labels = %s' % unique_labels)
+  print('Unique labels (count = %d) = %s' %
+        (len(unique_labels), unique_labels))
 
   for i, label in enumerate(unique_labels):
     label_dir = os.path.join(root_dir, label)
@@ -178,4 +180,4 @@ def load_data(root_dir, n_fft, sampling_frequency_hz, max_frequency_hz):
 
   xs = xs[order, :,  :]
   ys = ys[order, :]
-  return xs, ys
+  return unique_labels, xs, ys

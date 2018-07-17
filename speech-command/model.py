@@ -10,6 +10,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import json
 import os
 
 import keras
@@ -110,9 +111,15 @@ def train_model(root_dir,
                 n_fft,
                 sampling_frequency_hz,
                 max_frequency_hz, debug=False):
-  xs, ys = data.load_data(
+  words, xs, ys = data.load_data(
       os.path.expanduser(root_dir),
       n_fft, sampling_frequency_hz, max_frequency_hz)
+  metadata = {
+      'frameSize': n_fft,
+      'words': words
+  }
+  with open('metadata.json', 'wt') as f:
+    json.dump(metadata, f)
 
   input_shape = xs.shape[1:]
   num_classes = ys.shape[-1]
