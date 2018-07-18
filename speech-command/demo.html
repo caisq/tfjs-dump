@@ -15,13 +15,14 @@
       <textarea id="status-display" cols="80" rows="8"></textarea>
     </div>
     <div>
-      <input id="model-url" size="100" value="https://storage.googleapis.com/tfjs-speech-command-model-14w/model.json"></input>
-      <!-- <input id="model-url" size="100" value="./speech_command_browser_14w_normalized_tfjs/model.json"></input> -->
+      <select id="model-url">
+        <option value="https://storage.googleapis.com/tfjs-speech-command-model-17w/model.json">https://storage.googleapis.com/tfjs-speech-command-model-17w/model.json</option>
+        <option value="https://storage.googleapis.com/tfjs-speech-command-model-14w/model.json">https://storage.googleapis.com/tfjs-speech-command-model-14w/model.json</option>
+      </select>
       <button id="load-model">Load model from remote</button>
     </div>
 
     <div>
-      <!-- <input id="model-url" size="100" value="./speech_command_browser_14w_normalized_tfjs/model.json"></input> -->
       <button id="load-model-from-local" disabled="true">Load model from local</button>
       <button id="save-model-to-local" disabled="true">Save model to local</button>
       <button id="delete-model-from-local" disabled="true"  >Delete model from local</button>
