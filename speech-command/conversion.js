@@ -44,7 +44,7 @@ function triggerCombinedDatFileDownload(outputArrays, discardIndices) {
     const discardedFileNames = discardIndices.map(
         index => datFileInput.files[index].name);
     console.log(
-        `Discarding files ${discardedFileNames.length}: ` +
+        `Discarding ${discardedFileNames.length} file(s): ` +
         `${discardedFileNames}`);
     for (let i = discardIndices.length - 1; i >= 0; --i) {
       const index = discardIndices[i];
