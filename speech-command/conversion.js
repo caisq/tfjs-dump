@@ -59,6 +59,10 @@ function createBufferWithValues(audioContext, xs) {
   return buffer;
 }
 
+function popLastElementFromOutputArrays() {
+  outputArrays.pop(outputArrays.length - 1);
+}
+
 function createAllMinusInfinityFloat32Array(arrayLength) {
 
   const outputArray = new Float32Array(arrayLength);
@@ -68,6 +72,7 @@ function createAllMinusInfinityFloat32Array(arrayLength) {
   return outputArray;
 }
 
+let detectFreezeJob;
 function startNewRecording() {
   if (numRecordings > 0 && recordingCounter >= numRecordings) {
     console.log('Downloading combined data file...');
@@ -78,6 +83,9 @@ function startNewRecording() {
   const offlineContext = new OfflineAudioContext(
       1, samplingFrequency * maxRecordingLengthSeconds * 4, samplingFrequency);
   const reader = new FileReader();
+  reader.onerror = err => {
+    console.log(`reader.onerror: err=`, err);
+  };
   reader.onloadend = async () => {
     const dat = new Float32Array(reader.result);
     const source = offlineContext.createBufferSource();
@@ -92,6 +100,15 @@ function startNewRecording() {
     analyser.connect(offlineContext.destination);
     source.start();
 
+    function detectFreeze() {
+      console.warn(
+          `Detected frozen conversion! ` +
+          `Trying to start recording #${recordingCounter} over...`);
+      popLastElementFromOutputArrays();
+      setTimeout(startNewRecording, 5);
+    }
+    detectFreezeJob = setTimeout(detectFreeze, 2000);
+
     let recordingConversionSucceeded = false;
     let frameCounter = 0;
     const frameDuration = frameSize / samplingFrequency;
@@ -105,9 +122,10 @@ function startNewRecording() {
         offlineContext.resume();
         try {
           await offlineContext.suspend((frameCounter + 1) * frameDuration);
-        } catch(err) {
+        } catch (err) {
           console.log(
-              `suspend() call failed. Retrying file #${recordingCounter}: ` +
+              `suspend() call failed: ${err.message}. ` +
+              `Retrying file #${recordingCounter}: ` +
               datFileInput.files[recordingCounter].name);
           break;
         }
@@ -137,14 +155,17 @@ function startNewRecording() {
         source.stop();
         setTimeout(startNewRecording, 20);
       }
+
+      if (detectFreezeJob != null) {
+        clearTimeout(detectFreezeJob);
+        detectFreezeJob = null;
+      }
     });
     offlineContext.startRendering().catch(err => {
       console.log('Failed to render offline audio context:', err);
     });
   };
-  recordingFile = datFileInput.files[recordingCounter];
-
-  reader.readAsArrayBuffer(recordingFile);
+  reader.readAsArrayBuffer(datFileInput.files[recordingCounter]);
 }
 
 startDatFileButton.addEventListener('click', event => {
