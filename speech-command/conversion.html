@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Speech command: Conversion</title>
+  </head>
+  <body>
+    <div>
+      <input type="file" id="dat-file-input" multiple="true"></input>
+      <button id="start-dat-file">Convert Wave Files</button>
+      <input type="checkbox" id="show-spectrogram">Show spectrogram</input>
+      <span id="dat-progress"></span>
+    </div>
+
+    <div id="group-spectrograms"></div>
+    <canvas id="main-canvas" height="600" width="800"></canvas>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.11.7"></script>
+    <script src="spectral_plots.js"></script>
+    <script src="tensor_utils.js"></script>
+    <script src="conversion.js"></script>
+  </body>
+</html>

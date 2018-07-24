@@ -1,3 +1,20 @@
+/**
+ * @license
+ * Copyright 2018 Google LLC. All Rights Reserved.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * =============================================================================
+ */
+
 const mainCanvas = document.getElementById('main-canvas');
 
 const datFileInput = document.getElementById('dat-file-input');
@@ -5,16 +22,8 @@ const startDatFileButton = document.getElementById('start-dat-file');
 const datProgress = document.getElementById('dat-progress');
 const showSpectrogram = document.getElementById('show-spectrogram');
 
-const modelURLInput = document.getElementById('model-url');
-const loadModelButton = document.getElementById('load-model');
-const labelsInput = document.getElementById('labels');
-const predictionResult = document.getElementById('prediction-result');
-const predictionWinner = document.getElementById('prediction-winner');
-
 let numRecordings = -1;
 let recordingCounter = 0;
-let recordingNumFrames = [];
-
 let numFrames = -1;
 
 const samplingFrequency = 44100;
@@ -22,22 +31,17 @@ const samplingFrequency = 44100;
 // about 1 second long.
 const maxRecordingLengthSeconds = 1.1;
 
-let frameSize = 1024;
+let nFFT = 1024;
 let outputArrays = null;
-let intervalTask = null;
 
-// Loaded model that can be used to run prediction on conversion results.
-let model;
-
-function triggerDatFileDownload(outputArray) {
-  const anchor = document.createElement('a');
-  anchor.download = 'output.dat';
-  anchor.href = URL.createObjectURL(new Blob(
-      [outputArray], {type: 'application/octet-stream'}));
-  anchor.click();
-}
-
+/**
+ * Trigger downloading of output arrays concatenated as a single binary file.
+ *
+ * @param {Float32Array[]} outputArrays
+ */
 function triggerCombinedDatFileDownload(outputArrays) {
+  plotSpectrogramsForOutputArrays(outputArrays);
+
   const anchor = document.createElement('a');
   anchor.download = 'combined.dat';
   anchor.href = URL.createObjectURL(new Blob(
@@ -45,7 +49,32 @@ function triggerCombinedDatFileDownload(outputArrays) {
   anchor.click();
 }
 
-function createBufferWithValues(audioContext, xs) {
+function plotSpectrogramsForOutputArrays(outputArrays) {
+  const groupSpectrogramsDiv = document.getElementById('group-spectrograms');
+  if (!groupSpectrogramsDiv) {
+    return;
+  }
+  for (const outputArray of outputArrays) {
+    const canvas = document.createElement('canvas');
+    canvas.setAttribute('height', 120);
+    canvas.setAttribute('width', 160);
+    groupSpectrogramsDiv.appendChild(canvas);
+    plotSpectrogram(canvas, outputArray, nFFT, 256);
+  }
+}
+
+/**
+ * Create an audio buffer filled with a given value.
+ *
+ * In addition, create an new Float32Array to store the spectrogram data
+ * for the audio buffer and push it into `outputArrays`.
+ *
+ * @param {AudioContext} audioContext The AudioContext instance in which the
+ *   buffer will be created.
+ * @param {Float32array} xs Values to fill in the buffer.
+ * @returns The created buffer with the values filled.
+ */
+function createBufferWithValuesAndOutputArray(audioContext, xs) {
   const bufferLen = xs.length;
   const buffer = audioContext.createBuffer(
       1, bufferLen, audioContext.sampleRate);
@@ -53,18 +82,19 @@ function createBufferWithValues(audioContext, xs) {
   for (let i = 0; i < bufferLen; ++i) {
     channelData[i] = xs[i];
   }
-  numFrames = Math.floor(buffer.length / frameSize) + 5;
-  const arrayLength = frameSize * (numFrames + 1);
+  numFrames = Math.floor(buffer.length / nFFT) + 5;
+  const arrayLength = nFFT * (numFrames + 1);
   outputArrays.push(createAllMinusInfinityFloat32Array(arrayLength));
   return buffer;
 }
 
-function popLastElementFromOutputArrays() {
-  outputArrays.pop(outputArrays.length - 1);
-}
-
+/**
+ * Create an all-Negative Infinity Float32Array.
+ *
+ * @param {number} arrayLength Length of the array to create.
+ * @return The created Float32Array.
+ */
 function createAllMinusInfinityFloat32Array(arrayLength) {
-
   const outputArray = new Float32Array(arrayLength);
   for (let i = 0; i < arrayLength; ++i) {
     outputArray[i] = -Infinity;
@@ -72,7 +102,18 @@ function createAllMinusInfinityFloat32Array(arrayLength) {
   return outputArray;
 }
 
-let detectFreezeJob;
+/**
+ * Pop the last element out from `outputArrays`.
+ *
+ * Used during the handling of a frozen conversion.
+ */
+function popLastElementFromOutputArrays() {
+  outputArrays.pop(outputArrays.length - 1);
+}
+
+// The `setTimeout` task handle for the task that detects frozen conversions.
+let detectFreezeTask;
+
 function startNewRecording() {
   if (numRecordings > 0 && recordingCounter >= numRecordings) {
     console.log('Downloading combined data file...');
@@ -80,24 +121,21 @@ function startNewRecording() {
     return;
   }
 
-  const offlineContext = new OfflineAudioContext(
-      1, samplingFrequency * maxRecordingLengthSeconds * 4, samplingFrequency);
+  const offlineAudioContext = new OfflineAudioContext(
+      1, samplingFrequency * maxRecordingLengthSeconds * 2, samplingFrequency);
   const reader = new FileReader();
-  reader.onerror = err => {
-    console.log(`reader.onerror: err=`, err);
-  };
   reader.onloadend = async () => {
     const dat = new Float32Array(reader.result);
-    const source = offlineContext.createBufferSource();
-    source.buffer = createBufferWithValues(offlineContext, dat);
+    const source = offlineAudioContext.createBufferSource();
+    source.buffer = createBufferWithValuesAndOutputArray(offlineAudioContext, dat);
 
-    const analyser = offlineContext.createAnalyser();
-    analyser.fftSize = frameSize * 2;
+    const analyser = offlineAudioContext.createAnalyser();
+    analyser.fftSize = nFFT * 2;
     analyser.smoothingTimeConstant = 0.0;
     const freqData = new Float32Array(analyser.frequencyBinCount);
 
     source.connect(analyser);
-    analyser.connect(offlineContext.destination);
+    analyser.connect(offlineAudioContext.destination);
     source.start();
 
     function detectFreeze() {
@@ -107,21 +145,21 @@ function startNewRecording() {
       popLastElementFromOutputArrays();
       setTimeout(startNewRecording, 5);
     }
-    detectFreezeJob = setTimeout(detectFreeze, 2000);
+    detectFreezeTask = setTimeout(detectFreeze, maxRecordingLengthSeconds * 1e3);
 
     let recordingConversionSucceeded = false;
     let frameCounter = 0;
-    const frameDuration = frameSize / samplingFrequency;
-    offlineContext.suspend(frameDuration).then(async () => {
+    const frameDuration = nFFT / samplingFrequency;
+    offlineAudioContext.suspend(frameDuration).then(async () => {
       analyser.getFloatFrequencyData(freqData);
       const outputArray = outputArrays[outputArrays.length - 1];
       outputArray.set(freqData, frameCounter * analyser.frequencyBinCount);
 
       while (true) {
         frameCounter++;
-        offlineContext.resume();
+        offlineAudioContext.resume();
         try {
-          await offlineContext.suspend((frameCounter + 1) * frameDuration);
+          await offlineAudioContext.suspend((frameCounter + 1) * frameDuration);
         } catch (err) {
           console.log(
               `suspend() call failed: ${err.message}. ` +
@@ -143,25 +181,21 @@ function startNewRecording() {
         recordingCounter++;
         datProgress.textContent = `Converting #${recordingCounter}`;
         if (showSpectrogram.checked) {
-          plotSpectrogram(mainCanvas, outputArray, frameSize, 256);
-        }
-        if (model != null) {
-          plotSpectrogram(mainCanvas, outputArray, frameSize, 256);
-          runPrediction(outputArray);
+          plotSpectrogram(mainCanvas, outputArray, nFFT, 256);
         }
         setTimeout(startNewRecording, 5);
       } else {
         outputArrays.pop();
         source.stop();
-        setTimeout(startNewRecording, 20);
+        setTimeout(startNewRecording, 5);
       }
 
-      if (detectFreezeJob != null) {
-        clearTimeout(detectFreezeJob);
-        detectFreezeJob = null;
+      if (detectFreezeTask != null) {
+        clearTimeout(detectFreezeTask);
+        detectFreezeTask = null;
       }
     });
-    offlineContext.startRendering().catch(err => {
+    offlineAudioContext.startRendering().catch(err => {
       console.log('Failed to render offline audio context:', err);
     });
   };
@@ -172,50 +206,9 @@ startDatFileButton.addEventListener('click', event => {
   if (datFileInput.files.length > 0) {
     outputArrays = [];
     numRecordings = datFileInput.files.length;
-    recordingNumFrames = [];
     recordingCounter = 0;
     startNewRecording();
   } else {
     alert('Select one or more files first.');
   }
 });
-
-loadModelButton.addEventListener('click', async () => {
-  console.log(modelURLInput.value);
-  model = await tf.loadModel(modelURLInput.value);
-  loadModelButton.disabled = true;
-});
-
-function runPrediction(dataArray) {
-  if (model == null) {
-    throw new Error('Model is not loaded yet');
-  }
-  const timeSteps = model.inputs[0].shape[1];
-  const freqSteps = model.inputs[0].shape[2];
-  const tensorBuffer = tf.buffer([timeSteps * freqSteps]);
-  let k = 0;
-  for (let i = 0; i < timeSteps; ++i) {
-    for (let j = 0; j < freqSteps; ++j) {
-      const x = dataArray[i * frameSize + j];
-      tensorBuffer.set(x, k++);
-    }
-  }
-  const unnormalized = tensorBuffer.toTensor();
-  const normalized = normalize(unnormalized).reshape(
-      [1, timeSteps, freqSteps, 1]);
-  const predictOut = model.predict(normalized).dataSync();
-
-  const labels = labelsInput.value.split(',');
-  const word2Score = {};
-  let maxScore = -Infinity;
-  let winnerIndex = -1;
-  predictOut.forEach((score, index) => {
-    word2Score[labels[index]] = score.toFixed(3);
-    if (score > maxScore) {
-      maxScore = score;
-      winnerIndex = index;
-    }
-  });
-  predictionResult.value = JSON.stringify(word2Score);
-  predictionWinner.value += labels[winnerIndex] + ',';
-}
