@@ -39,9 +39,13 @@ let outputArrays = null;
  *   to discard.
  */
 function triggerCombinedDatFileDownload(outputArrays, discardIndices) {
-  if (discardIndices != null) {
+  if (discardIndices != null && discardIndices.length > 0) {
     discardIndices.sort((a, b) => a - b);
-    console.log('discardIndices:', discardIndices);
+    const discardedFileNames = discardIndices.map(
+        index => datFileInput.files[index].name);
+    console.log(
+        `Discarding files ${discardedFileNames.length}: ` +
+        `${discardedFileNames}`);
     for (let i = discardIndices.length - 1; i >= 0; --i) {
       const index = discardIndices[i];
       outputArrays.splice(index, 1);
@@ -86,7 +90,6 @@ function plotSpectrogramsForOutputArrays(outputArrays, nFFT) {
         discardIndices.splice(discardIndices.indexOf(recordingIndex), 1);
       }
     }
-    console.log(`Discarding ${discardIndices}`);
   }
 
   for (let i = 0; i < outputArrays.length; ++i) {
@@ -109,7 +112,7 @@ function plotSpectrogramsForOutputArrays(outputArrays, nFFT) {
     canvas.setAttribute('width', 160);
     recordingDiv.appendChild(canvas);
     groupSpectrogramsDiv.appendChild(recordingDiv);
-    plotSpectrogram(canvas, outputArray, nFFT, 256);
+    plotSpectrogram(canvas, outputArray, nFFT);
   }
 
   const downloadButton = document.createElement('button');
@@ -129,10 +132,11 @@ function plotSpectrogramsForOutputArrays(outputArrays, nFFT) {
  * @param {AudioContext} audioContext The AudioContext instance in which the
  *   buffer will be created.
  * @param {Float32array} xs Values to fill in the buffer.
- * @param {number} nFFT Number of FFT points per frame.
+ * @param {number} nFFTIn Number of FFT points per frame in the input (from
+ *   OfflineAudioContext).
  * @returns The created buffer with the values filled.
  */
-function createBufferWithValuesAndOutputArray(audioContext, xs, nFFT) {
+function createBufferWithValuesAndOutputArray(audioContext, xs, nFFTIn, nFFTOut) {
   const bufferLen = xs.length;
   const buffer = audioContext.createBuffer(
       1, bufferLen, audioContext.sampleRate);
@@ -140,8 +144,10 @@ function createBufferWithValuesAndOutputArray(audioContext, xs, nFFT) {
   for (let i = 0; i < bufferLen; ++i) {
     channelData[i] = xs[i];
   }
-  numFrames = Math.floor(buffer.length / nFFT) + 5;
-  const arrayLength = nFFT * (numFrames + 1);
+  // `3` here provides some safety room in case rounding error causes one
+  // or two extra frames.
+  numFrames = Math.floor(buffer.length / nFFTIn) + 3;
+  const arrayLength = nFFTOut * (numFrames + 1);
   outputArrays.push(createAllMinusInfinityFloat32Array(arrayLength));
   return buffer;
 }
@@ -175,16 +181,22 @@ let detectFreezeTask;
 function startNewRecording() {
   const samplingFrequencyHz =
       Number.parseFloat(document.getElementById('sampling-frequency-hz').value);
-  const nFFT = Number.parseInt(document.getElementById('nfft-in').value);
+  const nFFTIn = Number.parseInt(document.getElementById('nfft-in').value);
+  const nFFTOut = Number.parseInt(document.getElementById('nfft-out').value);
   if (recordingCounter === 0) {
     console.log(`samplingFrequencyHz = ${samplingFrequencyHz}`);
-    console.log(`nFFT = ${nFFT}`);
+    console.log(`nFFTIn = ${nFFTIn}`);
+    console.log(`nFFTOut = ${nFFTOut}`);
   }
 
   if (numRecordings > 0 && recordingCounter >= numRecordings) {
     console.log('Downloading combined data file...');
-    datProgress.textContent = `Rendering spectrograms...`;
-    plotSpectrogramsForOutputArrays(outputArrays, nFFT);
+    datProgress.textContent = 'Rendering spectrograms...';
+    setTimeout(() => {
+      plotSpectrogramsForOutputArrays(outputArrays, nFFTOut);
+      datProgress.textContent =
+          'Select recordings to discard, scroll to the bottom and click download.';
+    }, 20);
     return;
   }
 
@@ -194,10 +206,11 @@ function startNewRecording() {
   reader.onloadend = async () => {
     const dat = new Float32Array(reader.result);
     const source = offlineAudioContext.createBufferSource();
-    source.buffer = createBufferWithValuesAndOutputArray(offlineAudioContext, dat, nFFT);
+    source.buffer = createBufferWithValuesAndOutputArray(
+        offlineAudioContext, dat, nFFTIn, nFFTOut);
 
     const analyser = offlineAudioContext.createAnalyser();
-    analyser.fftSize = nFFT * 2;
+    analyser.fftSize = nFFTIn * 2;
     analyser.smoothingTimeConstant = 0.0;
     const freqData = new Float32Array(analyser.frequencyBinCount);
 
@@ -210,17 +223,17 @@ function startNewRecording() {
           `Detected frozen conversion! ` +
           `Trying to start recording #${recordingCounter} over...`);
       popLastElementFromOutputArrays();
-      setTimeout(startNewRecording, 5);
+      setTimeout(startNewRecording, 1);
     }
     detectFreezeTask = setTimeout(detectFreeze, maxRecordingLengthSeconds * 1e3);
 
     let recordingConversionSucceeded = false;
     let frameCounter = 0;
-    const frameDuration = nFFT / samplingFrequencyHz;
+    const frameDuration = nFFTIn / samplingFrequencyHz;
     offlineAudioContext.suspend(frameDuration).then(async () => {
       analyser.getFloatFrequencyData(freqData);
       const outputArray = outputArrays[outputArrays.length - 1];
-      outputArray.set(freqData, frameCounter * analyser.frequencyBinCount);
+      outputArray.set(freqData.subarray(0, nFFTOut), frameCounter * nFFTOut);
 
       while (true) {
         frameCounter++;
@@ -229,8 +242,7 @@ function startNewRecording() {
           await offlineAudioContext.suspend((frameCounter + 1) * frameDuration);
         } catch (err) {
           console.log(
-              `suspend() call failed: ${err.message}. ` +
-              `Retrying file #${recordingCounter}: ` +
+              `suspend() call failed: Retrying file #${recordingCounter}: ` +
               datFileInput.files[recordingCounter].name);
           break;
         }
@@ -241,17 +253,17 @@ function startNewRecording() {
           break;
         }
         const outputArray = outputArrays[outputArrays.length - 1];
-        outputArray.set(freqData, frameCounter * analyser.frequencyBinCount);
+        outputArray.set(freqData.subarray(0, nFFTOut), frameCounter * nFFTOut);
       }
 
       if (recordingConversionSucceeded) {
         recordingCounter++;
         datProgress.textContent = `Converting #${recordingCounter}`;
-        setTimeout(startNewRecording, 5);
+        setTimeout(startNewRecording, 1);
       } else {
         outputArrays.pop();
         source.stop();
-        setTimeout(startNewRecording, 5);
+        setTimeout(startNewRecording, 1);
       }
 
       if (detectFreezeTask != null) {

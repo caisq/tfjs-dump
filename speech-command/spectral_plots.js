@@ -10,6 +10,10 @@ function plotSpectrum(canvas, spectrum) {
 }
 
 function plotSpectrogram(canvas, frequencyData, fftSize, fftDisplaySize) {
+  if (fftDisplaySize == null) {
+    fftDisplaySize = fftSize;
+  }
+
   // Get the maximum and minimum.
   let min = Infinity;
   let max = -Infinity;
