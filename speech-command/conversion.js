@@ -178,6 +178,8 @@ function popLastElementFromOutputArrays() {
 // The `setTimeout` task handle for the task that detects frozen conversions.
 let detectFreezeTask;
 
+const OfflineAudioContextConstructor =
+    window.OfflineAudioContext || window.webkitOfflineAudioContext;
 function startNewRecording() {
   const samplingFrequencyHz =
       Number.parseFloat(document.getElementById('sampling-frequency-hz').value);
@@ -200,7 +202,7 @@ function startNewRecording() {
     return;
   }
 
-  const offlineAudioContext = new OfflineAudioContext(
+  const offlineAudioContext = new OfflineAudioContextConstructor(
       1, samplingFrequencyHz * maxRecordingLengthSeconds * 2, samplingFrequencyHz);
   const reader = new FileReader();
   reader.onloadend = async () => {
