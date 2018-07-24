@@ -3,12 +3,49 @@
   <head>
     <meta charset="UTF-8">
     <title>Speech command: Conversion</title>
+    <style>
+      canvas {
+        display: block;
+      }
+      input {
+        font-family: monospace;
+      }
+      .recording {
+        display: inline-block;
+      }
+      .discard-label {
+        font-family: sans-serif;
+        font-size: 70%;
+      }
+      .download-button {
+        display: block;
+      }
+      .param {
+        display: inline-block;
+        font-family: monospace;
+        width: 200px;
+      }
+    </style>
   </head>
   <body>
     <div>
+      <div>
+        <span class="param">Sampling frequency (Hz):</span>
+        <input id="sampling-frequency-hz" value="44100">
+      </div>
+      <div>
+        <span class="param">nFFT in:</span>
+        <input id="nfft-in" value="1024">
+      </div>
+      <div>
+        <span class="param">nFFT out:</span>
+        <input id="nfft-out" value="232">
+      </div>
+    </div>
+
+    <div>
       <input type="file" id="dat-file-input" multiple="true"></input>
       <button id="start-dat-file">Convert Wave Files</button>
-      <input type="checkbox" id="show-spectrogram">Show spectrogram</input>
       <span id="dat-progress"></span>
     </div>
 

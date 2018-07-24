@@ -20,27 +20,34 @@ const mainCanvas = document.getElementById('main-canvas');
 const datFileInput = document.getElementById('dat-file-input');
 const startDatFileButton = document.getElementById('start-dat-file');
 const datProgress = document.getElementById('dat-progress');
-const showSpectrogram = document.getElementById('show-spectrogram');
 
 let numRecordings = -1;
 let recordingCounter = 0;
 let numFrames = -1;
 
-const samplingFrequency = 44100;
 // 1.1 seconds gives us some comfortable wiggle room. Most of the recordings are
 // about 1 second long.
 const maxRecordingLengthSeconds = 1.1;
 
-let nFFT = 1024;
 let outputArrays = null;
 
 /**
  * Trigger downloading of output arrays concatenated as a single binary file.
  *
  * @param {Float32Array[]} outputArrays
+ * @param {number[]} discardIndices Indices of the elements of `outputArrays`
+ *   to discard.
  */
-function triggerCombinedDatFileDownload(outputArrays) {
-  plotSpectrogramsForOutputArrays(outputArrays);
+function triggerCombinedDatFileDownload(outputArrays, discardIndices) {
+  if (discardIndices != null) {
+    discardIndices.sort((a, b) => a - b);
+    console.log('discardIndices:', discardIndices);
+    for (let i = discardIndices.length - 1; i >= 0; --i) {
+      const index = discardIndices[i];
+      outputArrays.splice(index, 1);
+      console.log(`Discarding output array at index ${index}`);
+    }
+  }
 
   const anchor = document.createElement('a');
   anchor.download = 'combined.dat';
@@ -49,18 +56,68 @@ function triggerCombinedDatFileDownload(outputArrays) {
   anchor.click();
 }
 
-function plotSpectrogramsForOutputArrays(outputArrays) {
+/**
+ * Plot the spectrograms and let user decide which ones (if any) to discard.
+ *
+ * There is a button at the bottom which will trigger downloading of all the
+ * data when clicked.
+ *
+ * @param {Float32Array[]} outputArrays
+ * @param {number} nFFT
+ */
+function plotSpectrogramsForOutputArrays(outputArrays, nFFT) {
   const groupSpectrogramsDiv = document.getElementById('group-spectrograms');
   if (!groupSpectrogramsDiv) {
     return;
   }
-  for (const outputArray of outputArrays) {
+
+  const discardIndices = [];
+  /**
+   * Callback for the recording-discarding checkbox.
+   */
+  function discardCallback(recordingIndex, event) {
+    const checkbox = event.srcElement;
+    if (checkbox.checked) {
+      if (discardIndices.indexOf(recordingIndex) === -1) {
+        discardIndices.push(recordingIndex);
+      }
+    } else {
+      if (discardIndices.indexOf(recordingIndex) !== -1) {
+        discardIndices.splice(discardIndices.indexOf(recordingIndex), 1);
+      }
+    }
+    console.log(`Discarding ${discardIndices}`);
+  }
+
+  for (let i = 0; i < outputArrays.length; ++i) {
+    const outputArray = outputArrays[i];
+    const recordingDiv = document.createElement('div');
+    recordingDiv.classList.add('recording');
+    const checkbox = document.createElement('input');
+    checkbox.setAttribute('type', 'checkbox');
+    checkbox.addEventListener('click', discardCallback.bind(undefined, i));
+    recordingDiv.appendChild(checkbox);
+
+    const label = document.createElement('span');
+    label.classList.add('discard-label');
+    const fileNameNoExt = datFileInput.files[i].name.replace('.dat',  '');
+    label.textContent = `Discard ${fileNameNoExt}`;
+    recordingDiv.appendChild(label);
+
     const canvas = document.createElement('canvas');
     canvas.setAttribute('height', 120);
     canvas.setAttribute('width', 160);
-    groupSpectrogramsDiv.appendChild(canvas);
+    recordingDiv.appendChild(canvas);
+    groupSpectrogramsDiv.appendChild(recordingDiv);
     plotSpectrogram(canvas, outputArray, nFFT, 256);
   }
+
+  const downloadButton = document.createElement('button');
+  downloadButton.textContent = 'Download All Except Discarded';
+  downloadButton.classList.add('download-button');
+  downloadButton.addEventListener('click',
+      () => triggerCombinedDatFileDownload(outputArrays, discardIndices));
+      groupSpectrogramsDiv.appendChild(downloadButton);
 }
 
 /**
@@ -72,9 +129,10 @@ function plotSpectrogramsForOutputArrays(outputArrays) {
  * @param {AudioContext} audioContext The AudioContext instance in which the
  *   buffer will be created.
  * @param {Float32array} xs Values to fill in the buffer.
+ * @param {number} nFFT Number of FFT points per frame.
  * @returns The created buffer with the values filled.
  */
-function createBufferWithValuesAndOutputArray(audioContext, xs) {
+function createBufferWithValuesAndOutputArray(audioContext, xs, nFFT) {
   const bufferLen = xs.length;
   const buffer = audioContext.createBuffer(
       1, bufferLen, audioContext.sampleRate);
@@ -115,19 +173,28 @@ function popLastElementFromOutputArrays() {
 let detectFreezeTask;
 
 function startNewRecording() {
+  const samplingFrequencyHz =
+      Number.parseFloat(document.getElementById('sampling-frequency-hz').value);
+  const nFFT = Number.parseInt(document.getElementById('nfft-in').value);
+  if (recordingCounter === 0) {
+    console.log(`samplingFrequencyHz = ${samplingFrequencyHz}`);
+    console.log(`nFFT = ${nFFT}`);
+  }
+
   if (numRecordings > 0 && recordingCounter >= numRecordings) {
     console.log('Downloading combined data file...');
-    triggerCombinedDatFileDownload(outputArrays);
+    datProgress.textContent = `Rendering spectrograms...`;
+    plotSpectrogramsForOutputArrays(outputArrays, nFFT);
     return;
   }
 
   const offlineAudioContext = new OfflineAudioContext(
-      1, samplingFrequency * maxRecordingLengthSeconds * 2, samplingFrequency);
+      1, samplingFrequencyHz * maxRecordingLengthSeconds * 2, samplingFrequencyHz);
   const reader = new FileReader();
   reader.onloadend = async () => {
     const dat = new Float32Array(reader.result);
     const source = offlineAudioContext.createBufferSource();
-    source.buffer = createBufferWithValuesAndOutputArray(offlineAudioContext, dat);
+    source.buffer = createBufferWithValuesAndOutputArray(offlineAudioContext, dat, nFFT);
 
     const analyser = offlineAudioContext.createAnalyser();
     analyser.fftSize = nFFT * 2;
@@ -149,7 +216,7 @@ function startNewRecording() {
 
     let recordingConversionSucceeded = false;
     let frameCounter = 0;
-    const frameDuration = nFFT / samplingFrequency;
+    const frameDuration = nFFT / samplingFrequencyHz;
     offlineAudioContext.suspend(frameDuration).then(async () => {
       analyser.getFloatFrequencyData(freqData);
       const outputArray = outputArrays[outputArrays.length - 1];
@@ -180,9 +247,6 @@ function startNewRecording() {
       if (recordingConversionSucceeded) {
         recordingCounter++;
         datProgress.textContent = `Converting #${recordingCounter}`;
-        if (showSpectrogram.checked) {
-          plotSpectrogram(mainCanvas, outputArray, nFFT, 256);
-        }
         setTimeout(startNewRecording, 5);
       } else {
         outputArrays.pop();
@@ -203,6 +267,7 @@ function startNewRecording() {
 }
 
 startDatFileButton.addEventListener('click', event => {
+  startDatFileButton.disabled = true;
   if (datFileInput.files.length > 0) {
     outputArrays = [];
     numRecordings = datFileInput.files.length;
