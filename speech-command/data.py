@@ -11,21 +11,16 @@ import numpy as np
 
 
 NUM_FRAMES_CUTOFF = 43
-MAX_SPEC_VALUE_LOWER_BOUND = 20
-MIN_SPEC_VALUE_LOWER_BOUND = -200
 VALID_FRAME_COUNT_RANGE = [5, 50]
 
 
 def sanity_check_spectrogram(spec):
-  if np.min(spec) < MIN_SPEC_VALUE_LOWER_BOUND:
-    return False
-  if np.max(spec) < MAX_SPEC_VALUE_LOWER_BOUND:
-    return False
   if np.any(np.isnan(spec)) or np.any(np.isinf(spec)):
     return False
-  if spec.shape[1] < NUM_FRAMES_CUTOFF:
+  elif spec.shape[1] < NUM_FRAMES_CUTOFF:
     return False
-  return True
+  else:
+    return True
 
 
 def normalize(spec):
@@ -42,9 +37,7 @@ def to_one_hot(labels, unique_labels):
 def load_spectrograms(dat_path,
                       label,
                       unique_labels,
-                      n_fft,
-                      sampling_frequency_hz,
-                      max_frequency_hz):
+                      n_fft):
   '''
   Load spectrograms from a .dat file.
 
@@ -57,14 +50,11 @@ def load_spectrograms(dat_path,
       of which `dat_path` is a part.
     n_fft: Number of FFT points for each time slice. This corresponds to
       half the sampling frequency.
-    sampling_frequency_hz: Sampling frequency of the spectrogram in the data,
-      in Hz.
-    max_frequency_hz: Maximum frequency to be used in the deep-learning model,
-      in Hz.
 
   Returns:
     A `list` of 2D numpy arrays.
   '''
+  print('dat_path = %s' % dat_path)
   specs = []
   spec_lengths = []
   labels = []
@@ -75,9 +65,6 @@ def load_spectrograms(dat_path,
 
     data = np.array(struct.unpack('=%df' % num_floats, buffer))
     data = data.reshape([int(num_floats / n_fft), n_fft]).T
-    max_freq_index = int(
-        max_frequency_hz / (sampling_frequency_hz / 2) * n_fft)
-    data = data[:max_freq_index, :]
 
   num_discarded = 0
   num_kept = 0
@@ -100,6 +87,7 @@ def load_spectrograms(dat_path,
     if not sanity_check_spectrogram(spec):
       # plt.imshow(np.flipud(spec), interpolation='bilinear', aspect='auto')
       # plt.show()
+      # print(spec.shape)
       num_discarded += 1
     else:
       spec = spec[:, :NUM_FRAMES_CUTOFF]
@@ -114,15 +102,13 @@ def load_spectrograms(dat_path,
       t += 1
     if t >= data.shape[1]:
       break
-    # print('Found beginning of next recording: %d' % t)  # DEBUG
-    # print(data[0, t])  # DEBUG
   print('  Kept: %d; Discarded: %d' % (num_kept, num_discarded))
   # print('  Length min: %d, max: %d' % (np.min(spec_lengths), np.max(spec_lengths)))
   specs = np.expand_dims(np.swapaxes(np.array(specs, dtype=np.float32), 1, 2), -1)
   return specs, to_one_hot(labels, unique_labels)
 
 
-def load_data(root_dir, n_fft, sampling_frequency_hz, max_frequency_hz):
+def load_data(root_dir, n_fft):
   '''Load data from a directory.
 
   Args:
@@ -132,10 +118,6 @@ def load_data(root_dir, n_fft, sampling_frequency_hz, max_frequency_hz):
       .dat files.
     n_fft: Number of FFT points for each time slice. This corresponds to
       half the sampling frequency.
-    sampling_frequency_hz: Sampling frequency of the spectrogram in the data,
-      in Hz.
-    max_frequency_hz: Maximum frequency to be used in the deep-learning model,
-      in Hz.
 
   Returns:
     - Unique word labels as a `list` of `str`s.
@@ -158,9 +140,7 @@ def load_data(root_dir, n_fft, sampling_frequency_hz, max_frequency_hz):
     dat_paths = sorted(glob.glob(os.path.join(label_dir, '*.dat')))
     for dat_path in dat_paths:
       print('Loading spectrograms from %s' % dat_path)
-      file_xs, file_ys = load_spectrograms(
-          dat_path, i, unique_labels,
-          n_fft, sampling_frequency_hz, max_frequency_hz)
+      file_xs, file_ys = load_spectrograms(dat_path, i, unique_labels, n_fft)
       assert(file_xs.shape[0] == file_ys.shape[0])
       if xs is None:
         xs = file_xs

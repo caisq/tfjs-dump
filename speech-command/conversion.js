@@ -192,7 +192,6 @@ function startNewRecording() {
   }
 
   if (numRecordings > 0 && recordingCounter >= numRecordings) {
-    console.log('Downloading combined data file...');
     datProgress.textContent = 'Rendering spectrograms...';
     setTimeout(() => {
       plotSpectrogramsForOutputArrays(outputArrays, nFFTOut);

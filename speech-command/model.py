@@ -109,11 +109,8 @@ def create_model(input_shape, num_classes):
 
 def train_model(root_dir,
                 n_fft,
-                sampling_frequency_hz,
-                max_frequency_hz, debug=False):
-  words, xs, ys = data.load_data(
-      os.path.expanduser(root_dir),
-      n_fft, sampling_frequency_hz, max_frequency_hz)
+                debug=False):
+  words, xs, ys = data.load_data(os.path.expanduser(root_dir), n_fft)
   metadata = {
       'frameSize': n_fft,
       'words': words
@@ -152,17 +149,10 @@ if __name__ == '__main__':
       help='Number of FFT points. By Nyquist theorem, this corresponds to '
       'half of the sampling frequency.')
   parser.add_argument(
-      'sampling_frequency_hz', type=float,
-      help='Sampling frequency in the data files, in Hz.')
-  parser.add_argument(
-      'max_frequency_hz', type=float,
-      help='Maximum frequency to use in the spectrograms, in Hz.')
-  parser.add_argument(
       '--tf_debug', action='store_true',
       help='Use TensroFlow Debugger CLI.')
   parsed = parser.parse_args()
 
-  train_model(
-      parsed.data_root,
-      parsed.n_fft, parsed.sampling_frequency_hz, parsed.max_frequency_hz,
-      debug=parsed.tf_debug)
+  train_model(parsed.data_root,
+              parsed.n_fft,
+              debug=parsed.tf_debug)
