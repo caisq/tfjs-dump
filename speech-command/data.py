@@ -54,7 +54,6 @@ def load_spectrograms(dat_path,
   Returns:
     A `list` of 2D numpy arrays.
   '''
-  print('dat_path = %s' % dat_path)
   specs = []
   spec_lengths = []
   labels = []

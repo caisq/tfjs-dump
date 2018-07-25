@@ -242,9 +242,7 @@ function startNewRecording() {
         try {
           await offlineAudioContext.suspend((frameCounter + 1) * frameDuration);
         } catch (err) {
-          console.log(
-              `suspend() call failed: Retrying file #${recordingCounter}: ` +
-              datFileInput.files[recordingCounter].name);
+          // suspend() call failed. Retry file.
           break;
         }
 

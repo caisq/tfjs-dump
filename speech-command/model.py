@@ -32,6 +32,7 @@ def create_model(input_shape, num_classes):
   model.add(keras.layers.Conv2D(32, [2, 4], activation='relu'))
   model.add(keras.layers.MaxPool2D([2, 2], strides=[1, 2]))
   model.add(keras.layers.Flatten())
+  model.add(keras.layers.Dropout(0.25))
   model.add(keras.layers.Dense(2000, activation='relu'))
   model.add(keras.layers.Dropout(0.5))
   model.add(keras.layers.Dense(num_classes, activation='softmax'))
