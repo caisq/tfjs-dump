@@ -56,7 +56,12 @@ class BrowserFftSpeechCommandRecognizer {
     });
   }
 
-  async start(wordCallback) {
+  async start(wordCallback, config) {
+    if (this.frameIntervalTask_ != null) {
+      throw new Error(
+          'Cannot start because there is ongoing streaming recognition.')
+    }
+
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -87,7 +92,6 @@ class BrowserFftSpeechCommandRecognizer {
     this.analyser_.smoothingTimeConstant = 0.0;
     this.streamSource_.connect(this.analyser_);
     logToStatusDisplay('Created analyser.');
-    console.log('0. ', this.analyser_);  // DEBUG
 
     this.freqData_ = new Float32Array(this.N_FFT);
     this.rotatingBufferNumFrames_ =
@@ -96,7 +100,13 @@ class BrowserFftSpeechCommandRecognizer {
         this.modelFFTLength_ * this.rotatingBufferNumFrames_;
     this.rotatingBuffer_ = new Float32Array(rotatingBufferSize);
     this.frameCount_ = 0;
-    this.tracker_ = new Tracker(Math.round(this.numFrames_ * 0.5), 0);
+
+    let overlapFactor = 0;
+    if (config != null && config.overlapFactor != null) {
+      overlapFactor = config.overlapFactor;
+    }
+    this.tracker_ = new Tracker(
+        Math.round(this.numFrames_ * (1 - overlapFactor)), 0);
 
     this.wordCallback_ = wordCallback;
     this.frameIntervalTask_ = setInterval(
@@ -121,77 +131,63 @@ class BrowserFftSpeechCommandRecognizer {
 
     this.tracker_.tick(true);
     if (this.tracker_.shouldFire()) {
-      console.log('should fire: ', this.frameCount_);
       const freqData = getFrequencyDataFromRotatingBuffer(
           this.rotatingBuffer_, this.numFrames_, this.modelFFTLength_,
           this.frameCount_ - this.numFrames_);
       const inputTensor = getInputTensorFromFrequencyData(
           freqData, this.numFrames_, this.modelFFTLength_);
 
-      // if (collectOneSpeechSample) {
-      //   stopRequested = true;
-      //   clearInterval(intervalTask);
-
-      //   if (transferTensors[collectOneSpeechSample] == null) {
-      //     transferTensors[collectOneSpeechSample] = [];
-      //   }
-      //   transferTensors[collectOneSpeechSample].push(inputTensor);
-      //   collectWordButtons[collectOneSpeechSample].textContent =
-      //     `Collect "${collectOneSpeechSample}" sample ` +
-      //     `(${transferTensors[collectOneSpeechSample].length})`;
-      //   enableAllCollectWordButtons();
-      //   const wordDiv = collectWordDivs[collectOneSpeechSample];
-      //   const newCanvas = document.createElement('canvas');
-      //   newCanvas.style['display'] = 'inline-block';
-      //   newCanvas.style['vertical-align'] = 'middle';
-      //   newCanvas.style['height'] = '100px';
-      //   newCanvas.style['width'] = '150px';
-      //   newCanvas.style['padding'] = '5px';
-      //   wordDiv.appendChild(newCanvas);
-      //   plotSpectrogram(
-      //     newCanvas, freqData,
-      //     runOptions.modelFFTLength, runOptions.modelFFTLength);
-      // } else {
       tf.tidy(() => {
         const t0 = performance.now();
-        // if (this.model.outputs.length === 1) {
+        const probs = this.model.predict(inputTensor);
+        if (this.model.outputs.length === 1) {
           // No transfer learning has occurred; no transfer learned model
           // has been saved in IndexedDB.
-        const probs = this.model.predict(inputTensor);
-        this.wordCallback_(
-            {freqData, fftLength: this.modelFFTLength_}, probs.dataSync());
-          // plotPredictions(predictionCanvas, words, probs.dataSync());
-          // const recogIndex = tf.argMax(probs, -1).dataSync()[0];
-        // } else {
-        //   // This is a two headed model from transfer learning.
-        //   const probs = model.predict(inputTensor);
-        //   const oldWordProbs = probs[0];
-        //   const transferWordProbs = probs[1];
-        //   plotPredictions(predictionCanvas, words, oldWordProbs.dataSync());
-        //   const recogIndex = tf.argMax(oldWordProbs, -1).dataSync()[0];
-        //   plotPredictions(
-        //       transferPredictionCanvas, transferWords,
-        //       transferWordProbs.dataSync());
-        // }
+          this.wordCallback_(
+              {freqData, fftLength: this.modelFFTLength_}, probs.dataSync());
+        } else {
+          // This is a two headed model from transfer learning.
+          this.wordCallback_(
+              {freqData, fftLength: this.modelFFTLength_},
+              probs.map(p => p.dataSync()));
+        }
         const t1 = performance.now();
       });
       inputTensor.dispose();
       // }
     } else if (this.tracker_.isResting()) {
       // console.log('resting!');
-    //   // Clear prediction plot.
-    //   plotPredictions(predictionCanvas);
-    //   plotPredictions(transferPredictionCanvas);
+      //   // Clear prediction plot.
+      //   plotPredictions(predictionCanvas);
+      //   plotPredictions(transferPredictionCanvas);
     }
     this.frameCount_++;
   }
 
   async stop() {
+    if (this.frameIntervalTask_ == null) {
+      throw new Error(
+          'Cannot stop because there is no ongoing streaming recognition.')
+    }
+
     clearInterval(this.frameIntervalTask_);
     this.frameIntervalTask_ = null;
     await this.analyser_ .disconnect();
     await this.audioContext_.close();
     logToStatusDisplay('Audio context closed.');
+  }
+
+  get numFrames() {
+    return this.numFrames_;
+  }
+
+  get fftLength() {
+    return this.modelFFTLength_;
+  }
+
+  getInputTensorFromFrequencyData(freqData) {
+    return getInputTensorFromFrequencyData(
+        freqData, this.numFrames_, this.modelFFTLength_);
   }
 }
 
@@ -224,7 +220,6 @@ function getFrequencyDataFromRotatingBuffer(
   }
   return freqData;
 }
-
 
 function getInputTensorFromFrequencyData(freqData, numFrames, fftLength) {
   const size = freqData.length;

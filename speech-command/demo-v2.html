@@ -50,7 +50,7 @@
         width: 100%;
         height: 20%;
       }
-      .load-model {
+      .main-model {
         position: absolute;
         top: 10px;
         left: 10px;
@@ -62,11 +62,11 @@
       }
       .transfer-learn {
         position: absolute;
-        top: 15%;
+        top: 40%;
       }
-      #predict-out {
-        position: absolute;
-        top: 30%;
+      .word-div {
+        border-radius: 10px;
+        margin: 3px;
       }
     </style>
   </head>
@@ -74,8 +74,16 @@
     <div class="footer">
       <textarea id="status-display" cols="80"></textarea>
     </div>
-    <div class='load-model'>
+    <div class='main-model'>
       <button id="load-model">Load model</button>
+      <div>
+        <div>
+          <canvas id="prediction-canvas" height="100" width="600"></canvas>
+          <canvas id="transfer-prediction-canvas" height="100" width="300"></canvas>
+        </div>
+        <canvas id="main-canvas" height="180" width="270"></canvas>
+        <canvas id="spectrogram-canvas" height="240" width="300"></canvas>
+      </div>
     </div>
 
     <div class="start-stop">
@@ -91,14 +99,7 @@
       <div id="collect-words"></div>
     </div>
 
-    <div id="predict-out">
-      <div>
-        <canvas id="prediction-canvas" height="100" width="600"></canvas>
-        <canvas id="transfer-prediction-canvas" height="100" width="300"></canvas>
-      </div>
-      <canvas id="main-canvas" height="180" width="270"></canvas>
-      <canvas id="spectrogram-canvas" height="240" width="300"></canvas>
-    </div>
+
 
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.12.3"></script>

@@ -92,24 +92,21 @@ async function loadModelAndMetadataAndWarmUpModel(loadFromRemote) {
   // }
 }
 
-// function start(collectOneSpeechSample) {
-//   stopRequested = false;
-//   navigator.mediaDevices.getUserMedia({audio: true, video: false})
-//     .then(stream => {
-//       logToStatusDisplay('getUserMedia() succeeded.');
-//       handleMicStream(stream, collectOneSpeechSample);
-//     }).catch(err => {
-//       logToStatusDisplay('getUserMedia() failed: ' + err.message);
-//     });
-// }
-
 startButton.addEventListener('click', async () => {
   logToStatusDisplay('Starting recognizer...');
-  await recognizer.start((spectrogram, probs) => {
+  await recognizer.start((spectrogram, scores) => {
     plotSpectrogram(
         spectrogramCanvas, spectrogram.freqData,
         spectrogram.fftLength, spectrogram.fftLength);
-    plotPredictions(predictionCanvas, words, probs);
+    const originalWordsScores = Array.isArray(scores) ? scores[0] : scores;
+    plotPredictions(predictionCanvas, words, originalWordsScores);
+    if (Array.isArray(scores)) {
+      // Plot scores for transfer-learning words.
+      plotPredictions(
+          transferPredictionCanvas, transferWords, scores[scores.length - 1]);
+    }
+  }, {
+    overlapFactor: 0.5
   });
   startButton.disabled = true;
   stopButton.disabled = false;
@@ -135,6 +132,7 @@ enterLearnWordsButton.addEventListener('click', () => {
 
   for (const word of transferWords) {
     const wordDiv = document.createElement('div');
+    wordDiv.classList.add('word-div');
     wordDiv.style['border'] = 'solid 1px'
     const button = document.createElement('button');
     button.style['display'] = 'inline-block';
@@ -147,11 +145,37 @@ enterLearnWordsButton.addEventListener('click', () => {
     collectWordButtons[word] = button;
 
     button.addEventListener('click', () => {
+      console.log('In button callback');
       disableAllCollectWordButtons();
-      currentlyCollectedWord = word;
-      logToStatusDisplay(
-          `Collect one sample of word "${currentlyCollectedWord}"`);
-      start(word);
+      logToStatusDisplay(`Collect one sample of word "${word}"`);
+      recognizer.start(async (spectrogram, probs) => {
+        await recognizer.stop();
+
+        if (transferTensors[word] == null) {
+          transferTensors[word] = [];
+        }
+        const inputTensor =
+            recognizer.getInputTensorFromFrequencyData(spectrogram.freqData);
+
+        transferTensors[word].push(inputTensor);
+        collectWordButtons[word].textContent =
+          `Collect "${word}" sample ` +
+          `(${transferTensors[word].length})`;
+        enableAllCollectWordButtons();
+        const wordDiv = collectWordDivs[word];
+        const newCanvas = document.createElement('canvas');
+        newCanvas.style['display'] = 'inline-block';
+        newCanvas.style['vertical-align'] = 'middle';
+        newCanvas.style['height'] = '100px';
+        newCanvas.style['width'] = '150px';
+        newCanvas.style['padding'] = '5px';
+        wordDiv.appendChild(newCanvas);
+        plotSpectrogram(
+            newCanvas, spectrogram.freqData,
+            recognizer.fftLength, recognizer.fftLength);
+      }, {
+        overlapFactor: 0
+      });
     });
   }
 });
@@ -248,8 +272,7 @@ async function doTransferLearning(xs, ys) {
     inputs: model.inputs,
     outputs: model.outputs.concat(transferModel.outputs),
   });
-
-  // TODO(cais): Save transfer words in localstorage.
+  recognizer = new BrowserFftSpeechCommandRecognizer(model);
 
   return history;
 }
