@@ -70,7 +70,7 @@ class BrowserFftSpeechCommandRecognizer {
 
     const AudioContextConstructor =
         window.AudioContext || window.webkitAudioContext;
-    this.audioContext_ = new AudioContext();
+    this.audioContext_ = new AudioContextConstructor();
     if (this.audioContext_.sampleRate !== this.SAMPLING_RATE) {
       console.warn(
         `Mismatch in sampling rate: ` +
