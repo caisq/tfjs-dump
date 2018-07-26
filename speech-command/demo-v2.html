@@ -8,34 +8,78 @@
       .control {
         display: inline-block;
       }
+      button {
+        color: #ff8300;
+        background-color: #ffffff;
+        border-style: solid;
+        border-width: 2px;
+        border-color: #ff8300;
+        border-radius: 10px;
+        font-size: 35px;
+        height: 50px;
+        margin: 5px;
+      }
+      button:disabled {
+        color: #a0a0a0;
+        border-color: #a0a0a0;
+      }
+      input {
+        color: #0000ff;
+        background-color: #ffffff;
+        border-style: solid;
+        border-width: 2px;
+        border-color: #0000ff;
+        border-radius: 10px;
+        font-size: 35px;
+        height: 50px;
+        margin: 5px;
+      }
+      textarea {
+        font-size: 20px;
+        width: 90%;
+        height: 80%;
+        border: 2px solid #888;
+        border-radius: 10px;
+        resize: none;
+      }
+      .footer {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        height: 20%;
+      }
+      .load-model {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+      }
+      .start-stop {
+        position: absolute;
+        top: 10px;
+        left: 40%;
+      }
+      .transfer-learn {
+        position: absolute;
+        top: 15%;
+      }
     </style>
   </head>
   <body>
-    <div>
-      <textarea id="status-display" cols="80" rows="8"></textarea>
+    <div class="footer">
+      <textarea id="status-display" cols="80"></textarea>
     </div>
-    <div>
-      <select id="model-url">
-        <option value="https://storage.googleapis.com/tfjs-speech-command-model-17w/model.json">https://storage.googleapis.com/tfjs-speech-command-model-17w/model.json</option>
-      </select>
-      <button id="load-model">Load model from remote</button>
+    <div class='load-model'>
+      <button id="load-model">Load model</button>
     </div>
 
-    <div>
-      <button id="load-model-from-local" disabled="true">Load model from local</button>
-      <button id="save-model-to-local" disabled="true">Save model to local</button>
-      <button id="delete-model-from-local" disabled="true"  >Delete model from local</button>
-    </div>
-
-    <div>
+    <div class="start-stop">
       <button id="start" disabled="true">Start</button>
       <button id="stop" disabled="true">Stop</button>
-      <span id="recog-label"></span>
     </div>
 
-    <div>
-      <input id="learn-words" size="40" value="red,green,blue"></input>
-      <button id="enter-learn-words" disabled="true">Enter transfer learning words</button>
+    <div class="transfer-learn">
+      <input id="learn-words" size="20" value="red,green,blue"></input>
+      <button id="enter-learn-words" disabled="true">Enter new words</button>
       <button id="start-transfer-learn" disabled="true">Start transfer learning</button>
       <div id="transfer-learn-history"></div>
       <div id="collect-words"></div>
