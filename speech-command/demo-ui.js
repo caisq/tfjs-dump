@@ -19,8 +19,11 @@ function plotPredictions(canvas, candidateWords, probabilities) {
   ctx.font = '12px Arial';
   ctx.beginPath();
   for (let i = 0; i < candidateWords.length; ++i) {
-    ctx.fillText(
-      candidateWords[i], i * (barWidth + barGap), 0.95 * predictionCanvas.height);
+    let word = candidateWords[i];
+    if (word === '_background_noise_') {
+      word = 'noise';
+    }
+    ctx.fillText(word, i * (barWidth + barGap), 0.95 * predictionCanvas.height);
   }
   ctx.stroke();
 

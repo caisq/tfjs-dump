@@ -7,6 +7,7 @@ class BrowserFftSpeechCommandRecognizer {
   constructor(model) {
     this.SAMPLING_RATE = 44100;
     this.N_FFT = 1024;
+    this.ROTATING_BUFFER_SIZE_MULTIPLIER = 2;
 
     this.checkModel_(model);
     this.model = model;
@@ -32,7 +33,7 @@ class BrowserFftSpeechCommandRecognizer {
     if (inputShape[2] > this.N_FFT) {
       throw new Error(
           `Unexpected frame size: ${metadataJSON.frameSize}, ` +
-          `which is greater than nFFT (${runOptions.nFFT})!`);
+          `which is greater than nFFT (${this.N_FFT})!`);
     }
     if (inputShape[3] !== 1) {
       throw new Error(
@@ -86,9 +87,9 @@ class BrowserFftSpeechCommandRecognizer {
 
     this.freqData_ = new Float32Array(this.N_FFT);
     this.rotatingBufferNumFrames_ =
-        runOptions.numFrames * runOptions.rotatingBufferSizeMultiplier;
+        this.numFrames_ * this.ROTATING_BUFFER_SIZE_MULTIPLIER;
     const rotatingBufferSize =
-        runOptions.modelFFTLength * this.rotatingBufferNumFrames_;
+        this.modelFFTLength_ * this.rotatingBufferNumFrames_;
     this.rotatingBuffer_ = new Float32Array(rotatingBufferSize);
     this.frameCount_ = 0;
     this.tracker_ = new Tracker(this.numFrames_, 0);
@@ -106,7 +107,7 @@ class BrowserFftSpeechCommandRecognizer {
     }
 
     const freqDataSlice = this.freqData_.slice(0, this.modelFFTLength_);
-    // TODO(cais): Make this a callback.
+    // TODO(cais): Make this a callback. Remove runOptions.
     plotSpectrum(mainCanvas, freqDataSlice, runOptions);
 
     const bufferPos = this.frameCount_ % this.rotatingBufferNumFrames_;
@@ -118,8 +119,10 @@ class BrowserFftSpeechCommandRecognizer {
     if (this.tracker_.shouldFire()) {
       console.log('should fire: ', this.frameCount_);
       const freqData = getFrequencyDataFromRotatingBuffer(
-          this.rotatingBuffer_, this.frameCount_ - this.numFrames_);
-      const inputTensor = getInputTensorFromFrequencyData(freqData);
+          this.rotatingBuffer_, this.numFrames_, this.modelFFTLength_,
+          this.frameCount_ - this.numFrames_);
+      const inputTensor = getInputTensorFromFrequencyData(
+          freqData, this.numFrames_, this.modelFFTLength_);
 
       // if (collectOneSpeechSample) {
       //   stopRequested = true;
@@ -190,18 +193,18 @@ function getArrayMax(xs) {
   return max;
 }
 
-function getFrequencyDataFromRotatingBuffer(rotatingBuffer, frameCount) {
-  const size = runOptions.numFrames * runOptions.modelFFTLength;
+function getFrequencyDataFromRotatingBuffer(
+    rotatingBuffer, numFrames, fftLength, frameCount) {
+  const size = numFrames * fftLength;
   const freqData = new Float32Array(size);
 
   const rotatingBufferSize = rotatingBuffer.length;
-  const rotatingBufferNumFrames =
-    rotatingBufferSize / runOptions.modelFFTLength;
+  const rotatingBufferNumFrames = rotatingBufferSize / fftLength;
   while (frameCount < 0) {
     frameCount += rotatingBufferNumFrames;
   }
   const indexBegin =
-    (frameCount % rotatingBufferNumFrames) * runOptions.modelFFTLength;
+    (frameCount % rotatingBufferNumFrames) * fftLength;
   const indexEnd = indexBegin + size;
 
   for (let i = indexBegin; i < indexEnd; ++i) {
@@ -211,12 +214,12 @@ function getFrequencyDataFromRotatingBuffer(rotatingBuffer, frameCount) {
 }
 
 
-function getInputTensorFromFrequencyData(freqData) {
+function getInputTensorFromFrequencyData(freqData, numFrames, fftLength) {
   const size = freqData.length;
   const tensorBuffer = tf.buffer([size]);
   for (let i = 0; i < freqData.length; ++i) {
     tensorBuffer.set(freqData[i], i);
   }
   return normalize(tensorBuffer.toTensor().reshape([
-    1, runOptions.numFrames, runOptions.modelFFTLength, 1]));
+      1, numFrames, fftLength, 1]));
 }
