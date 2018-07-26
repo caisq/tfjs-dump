@@ -85,6 +85,9 @@ def create_model(input_shape, num_classes):
   #   strides: [1, 2]
   # }));
   # model.add(tf.layers.flatten({}));
+  # model.add(tf.layers.dropout({
+  #   rate: 0.25
+  # }));
   # model.add(tf.layers.dense({
   #   units: 2000,
   #   activation: 'relu'
