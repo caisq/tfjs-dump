@@ -16,7 +16,7 @@
     </div>
     <div>
       <select id="model-url">
-        <option value="https://storage.googleapis.com/tfjs-speech-command-model-14w/model.json">https://storage.googleapis.com/tfjs-speech-command-model-14w/model.json</option>
+        <option value="https://storage.googleapis.com/tfjs-speech-command-model-17w/model.json">https://storage.googleapis.com/tfjs-speech-command-model-17w/model.json</option>
       </select>
       <button id="load-model">Load model from remote</button>
     </div>
@@ -51,7 +51,7 @@
       <span id="magnitude-threshold-span"></span>
       <div class="slidecontainer">
         <button id="magnitude-threshold-decrease">-</button>
-        <input type="range" min="-60" max="0" value="-35" class="slider" id="magnitude-threshold">
+        <input type="range" min="-100" max="0" value="-35" class="slider" id="magnitude-threshold">
         <button id="magnitude-threshold-increase">+</button>
       </div>
     </div>
@@ -67,6 +67,6 @@
     <script src="tensor_utils.js"></script>
     <script src="tracker.js"></script>
     <script src="demo-ui.js"></script>
-    <script src="demo.js"></script>
+    <script src="demo-v2.js"></script>
   </body>
 </html>
