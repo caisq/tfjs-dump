@@ -81,29 +81,30 @@ async function loadModelAndMetadataAndWarmUpModel(loadFromRemote) {
   startButton.disabled = false;
   enterLearnWordsButton.disabled = false;
   startTransferLearnButton.disabled = false;
-
-  // 4. If model has more than one heads, load the transfer words.
-  if (model.outputs.length > 1) {
-    transferWords =
-        JSON.parse(localStorage.getItem(TRANSFER_WORDS_SAVE_LOCATION));
-    learnWordsInput.value = transferWords.join(',');
-    logToStatusDisplay(
-        `Loaded transfer learned words: ${JSON.stringify(transferWords)}`);
-  }
+  logToStatusDisplay(`Done loading.`);
+  // // 4. If model has more than one heads, load the transfer words.
+  // if (model.outputs.length > 1) {
+  //   transferWords =
+  //       JSON.parse(localStorage.getItem(TRANSFER_WORDS_SAVE_LOCATION));
+  //   learnWordsInput.value = transferWords.join(',');
+  //   logToStatusDisplay(
+  //       `Loaded transfer learned words: ${JSON.stringify(transferWords)}`);
+  // }
 }
 
-function start(collectOneSpeechSample) {
-  stopRequested = false;
-  navigator.mediaDevices.getUserMedia({audio: true, video: false})
-    .then(stream => {
-      logToStatusDisplay('getUserMedia() succeeded.');
-      handleMicStream(stream, collectOneSpeechSample);
-    }).catch(err => {
-      logToStatusDisplay('getUserMedia() failed: ' + err.message);
-    });
-}
+// function start(collectOneSpeechSample) {
+//   stopRequested = false;
+//   navigator.mediaDevices.getUserMedia({audio: true, video: false})
+//     .then(stream => {
+//       logToStatusDisplay('getUserMedia() succeeded.');
+//       handleMicStream(stream, collectOneSpeechSample);
+//     }).catch(err => {
+//       logToStatusDisplay('getUserMedia() failed: ' + err.message);
+//     });
+// }
 
 startButton.addEventListener('click', async () => {
+  logToStatusDisplay('Starting recognizer...');
   await recognizer.start((spectrogram, probs) => {
     plotSpectrogram(
         spectrogramCanvas, spectrogram.freqData,
@@ -114,8 +115,8 @@ startButton.addEventListener('click', async () => {
   stopButton.disabled = false;
 });
 
-stopButton.addEventListener('click', () => {
-  stopRequested = true;
+stopButton.addEventListener('click', async () => {
+  await recognizer.stop();
   startButton.disabled = false;
   stopButton.disabled = true;
 });

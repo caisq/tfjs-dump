@@ -68,9 +68,11 @@ class BrowserFftSpeechCommandRecognizer {
       console.error('getUserMedia() failed: ' + err.message);
     }
 
+    logToStatusDisplay('Creating audio context...');
     const AudioContextConstructor =
         window.AudioContext || window.webkitAudioContext;
     this.audioContext_ = new AudioContextConstructor();
+    logToStatusDisplay('Created audio context.');
     if (this.audioContext_.sampleRate !== this.SAMPLING_RATE) {
       console.warn(
         `Mismatch in sampling rate: ` +
@@ -78,11 +80,13 @@ class BrowserFftSpeechCommandRecognizer {
         `Actual: ${this.audioContext_.sampleRate}`);
     }
 
-    const source = this.audioContext_.createMediaStreamSource(stream);
+    this.streamSource_ = this.audioContext_.createMediaStreamSource(stream);
+    logToStatusDisplay('Created audio source.');
     this.analyser_ = this.audioContext_.createAnalyser();
     this.analyser_.fftSize = this.N_FFT * 2;
     this.analyser_.smoothingTimeConstant = 0.0;
-    source.connect(this.analyser_);
+    this.streamSource_.connect(this.analyser_);
+    logToStatusDisplay('Created analyser.');
     console.log('0. ', this.analyser_);  // DEBUG
 
     this.freqData_ = new Float32Array(this.N_FFT);
@@ -92,10 +96,10 @@ class BrowserFftSpeechCommandRecognizer {
         this.modelFFTLength_ * this.rotatingBufferNumFrames_;
     this.rotatingBuffer_ = new Float32Array(rotatingBufferSize);
     this.frameCount_ = 0;
-    this.tracker_ = new Tracker(this.numFrames_, 0);
+    this.tracker_ = new Tracker(Math.round(this.numFrames_ * 0.5), 0);
 
     this.wordCallback_ = wordCallback;
-    intervalTask = setInterval(
+    this.frameIntervalTask_ = setInterval(
         this.onAudioFrame_.bind(this), this.N_FFT / this.SAMPLING_RATE * 1e3);
   }
 
@@ -180,6 +184,14 @@ class BrowserFftSpeechCommandRecognizer {
     //   plotPredictions(transferPredictionCanvas);
     }
     this.frameCount_++;
+  }
+
+  async stop() {
+    clearInterval(this.frameIntervalTask_);
+    this.frameIntervalTask_ = null;
+    await this.analyser_ .disconnect();
+    await this.audioContext_.close();
+    logToStatusDisplay('Audio context closed.');
   }
 }
 
