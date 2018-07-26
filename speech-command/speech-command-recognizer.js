@@ -21,7 +21,6 @@ class BrowserFftSpeechCommandRecognizer {
     this.running_ = false;
 
     this.warmUpModel_();
-    console.log('Done warming up model.');  // DEBUG
   }
 
   checkModel_(model) {

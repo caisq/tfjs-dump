@@ -99,7 +99,8 @@ startButton.addEventListener('click', async () => {
         spectrogramCanvas, spectrogram.freqData,
         spectrogram.fftLength, spectrogram.fftLength);
     const originalWordsScores = Array.isArray(scores) ? scores[0] : scores;
-    plotPredictions(predictionCanvas, words, originalWordsScores);
+    const topK = 3;
+    plotPredictions(predictionCanvas, words, originalWordsScores, topK);
     if (Array.isArray(scores)) {
       // Plot scores for transfer-learning words.
       plotPredictions(

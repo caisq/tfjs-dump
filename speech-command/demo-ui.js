@@ -6,7 +6,18 @@ function logToStatusDisplay(message) {
   statusDisplay.scrollTop = statusDisplay.scrollHeight;
 }
 
-function plotPredictions(canvas, candidateWords, probabilities) {
+function plotPredictions(canvas, candidateWords, probabilities, topK) {
+  if (topK != null) {
+    let wordsAndProbs = [];
+    for (let i = 0; i < candidateWords.length; ++i) {
+      wordsAndProbs.push([candidateWords[i], probabilities[i]]);
+    }
+    wordsAndProbs.sort((a, b) => (b[1] - a[1]));
+    wordsAndProbs = wordsAndProbs.slice(0, topK);
+    candidateWords = wordsAndProbs.map(item => item[0]);
+    probabilities = wordsAndProbs.map(item => item[1]);
+  }
+
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (probabilities == null) {
