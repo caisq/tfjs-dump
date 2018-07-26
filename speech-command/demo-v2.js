@@ -31,7 +31,8 @@ setUpThresholdSlider(runOptions);
 
 let intervalTask = null;
 
-let model;
+let model;  // TODO(cais): Remove.
+let recognizer;
 
 // Variables for transfer learning.
 let transferWords;
@@ -66,15 +67,17 @@ async function loadModelAndMetadataAndWarmUpModel(loadFromRemote) {
 
   model = await tf.loadModel(loadModelFrom);
   model.summary();
-  const inputShape = model.inputs[0].shape;
+  const inputShape = model.inputs[0].shape;  // TODO(cais): Remove.
+  console.assert(inputShape[3] === 1);
   runOptions.numFrames = inputShape[1];
   runOptions.modelFFTLength = inputShape[2];
   logToStatusDisplay(`modelFFTLength =  ${runOptions.modelFFTLength}`);
   logToStatusDisplay(`numFrames: ${runOptions.numFrames}`);
 
-  runOptions.frameMillis = runOptions.nFFT / runOptions.sampleRate * 1e3;
+  recognizer = new BrowserFftSpeechCommandRecognizer(model);
+  console.log(recognizer);  // DEBUG
 
-  console.assert(inputShape[3] === 1);
+  runOptions.frameMillis = runOptions.nFFT / runOptions.sampleRate * 1e3;
 
   // 2. Warm up the model.
   warmUpModel(3);
@@ -311,8 +314,8 @@ function getInputTensorFromFrequencyData(freqData) {
     1, runOptions.numFrames, runOptions.modelFFTLength, 1]));
 }
 
-startButton.addEventListener('click', () => {
-  start();
+startButton.addEventListener('click', async () => {
+  await recognizer.start();
   startButton.disabled = true;
   stopButton.disabled = false;
 });
