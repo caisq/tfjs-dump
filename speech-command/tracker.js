@@ -21,10 +21,14 @@ function Tracker(waitingPeriod, refractoryPeriod) {
         this.state = 2;
       }
     } else if (this.state === 2) {
-      this.state = 3;
+      if (this.refractoryPeriod === 0) {
+        this.state = 0;
+      } else {
+        this.state = 3;
+      }
     } else if (this.state === 3) {
       // In refractory period.
-      if (this.counter - this.lastTriggerCounter ===
+      if (this.counter - this.lastTriggerCounter >=
           this.waitingPeriod + 1 + this.refractoryPeriod) {
         this.state = 0;
       }

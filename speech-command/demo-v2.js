@@ -140,182 +140,148 @@ function start(collectOneSpeechSample) {
     });
 }
 
-/**
- * Handle stream from obtained user media.
- * @param {*} stream
- * @param {*} collectOneSpeechSample
- */
-function handleMicStream(stream, collectOneSpeechSample) {
-  if (runOptions.numFrames == null || runOptions.modelFFTLength == null) {
-    throw new Error('Load model first!');
-  }
+// /**
+//  * Handle stream from obtained user media.
+//  * @param {*} stream
+//  * @param {*} collectOneSpeechSample
+//  */
+// function handleMicStream(stream, collectOneSpeechSample) {
+//   if (runOptions.numFrames == null || runOptions.modelFFTLength == null) {
+//     throw new Error('Load model first!');
+//   }
 
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  const audioContext = new AudioContext();
-  logToStatusDisplay(`audioContext.sampleRate = ${audioContext.sampleRate}`);
-  if (audioContext.sampleRate !== runOptions.sampleRate) {
-    alert(
-      `Mismatch in sampling rate: ` +
-      `${audioContext.sampleRate} !== ${runOptions.sampleRate}`);
-  }
+//   const AudioContext = window.AudioContext || window.webkitAudioContext;
+//   const audioContext = new AudioContext();
+//   logToStatusDisplay(`audioContext.sampleRate = ${audioContext.sampleRate}`);
+//   if (audioContext.sampleRate !== runOptions.sampleRate) {
+//     alert(
+//       `Mismatch in sampling rate: ` +
+//       `${audioContext.sampleRate} !== ${runOptions.sampleRate}`);
+//   }
 
-  const source = audioContext.createMediaStreamSource(stream);
+//   const source = audioContext.createMediaStreamSource(stream);
 
-  const analyser = audioContext.createAnalyser();
-  analyser.fftSize = runOptions.nFFT * 2;
-  analyser.smoothingTimeConstant = 0.0;
-  source.connect(analyser);
+//   const analyser = audioContext.createAnalyser();
+//   analyser.fftSize = runOptions.nFFT * 2;
+//   analyser.smoothingTimeConstant = 0.0;
+//   source.connect(analyser);
 
-  const freqData = new Float32Array(analyser.frequencyBinCount);
-  const rotatingBufferNumFrames =
-    runOptions.numFrames * runOptions.rotatingBufferSizeMultiplier;
-  const rotatingBufferSize =
-    runOptions.modelFFTLength * rotatingBufferNumFrames;
-  const rotatingBuffer = new Float32Array(rotatingBufferSize);
+//   const freqData = new Float32Array(analyser.frequencyBinCount);
+//   const rotatingBufferNumFrames =
+//     runOptions.numFrames * runOptions.rotatingBufferSizeMultiplier;
+//   const rotatingBufferSize =
+//     runOptions.modelFFTLength * rotatingBufferNumFrames;
+//   const rotatingBuffer = new Float32Array(rotatingBufferSize);
 
-  let frameCount = 0;
+//   let frameCount = 0;
 
-  const frameDurationMillis = runOptions.nFFT / runOptions.sampleRate * 1e3;
-  const waitingPeriodFrames = Math.round(
-    runOptions.waitingPeriodMillis / frameDurationMillis);
-  const refractoryPeriodFrames = Math.round(
-    runOptions.refractoryPeriodMillis / frameDurationMillis);
-  logToStatusDisplay(`waitingPeriodFrames: ${waitingPeriodFrames}`);
-  logToStatusDisplay(`refractoryPeriodFrames: ${refractoryPeriodFrames}`);
+//   const frameDurationMillis = runOptions.nFFT / runOptions.sampleRate * 1e3;
+//   const waitingPeriodFrames = Math.round(
+//       runOptions.waitingPeriodMillis / frameDurationMillis);
+//   const refractoryPeriodFrames = Math.round(
+//       runOptions.refractoryPeriodMillis / frameDurationMillis);
+//   logToStatusDisplay(`waitingPeriodFrames: ${waitingPeriodFrames}`);
+//   logToStatusDisplay(`refractoryPeriodFrames: ${refractoryPeriodFrames}`);
 
-  const tracker = new Tracker(waitingPeriodFrames, refractoryPeriodFrames);
+//   const tracker = new Tracker(waitingPeriodFrames, refractoryPeriodFrames);
 
-  function onEveryAudioFrame() {
-    if (stopRequested) {
-      return;
-    }
+//   function onEveryAudioFrame() {
+//     if (stopRequested) {
+//       return;
+//     }
 
-    analyser.getFloatFrequencyData(freqData);
-    if (freqData[0] === -Infinity && freqData[1] === -Infinity) {
-      // No signal from microphone. Do nothing.
-      logToStatusDisplay('Warning: -Infinity magnitude.');
-      return;
-    }
+//     analyser.getFloatFrequencyData(freqData);
+//     if (freqData[0] === -Infinity && freqData[1] === -Infinity) {
+//       // No signal from microphone. Do nothing.
+//       logToStatusDisplay('Warning: -Infinity magnitude.');
+//       return;
+//     }
 
-    const freqDataSlice = freqData.slice(0, runOptions.modelFFTLength);
-    plotSpectrum(mainCanvas, freqDataSlice, runOptions);
+//     const freqDataSlice = freqData.slice(0, runOptions.modelFFTLength);
+//     plotSpectrum(mainCanvas, freqDataSlice, runOptions);
 
-    const bufferPos = frameCount % rotatingBufferNumFrames;
-    rotatingBuffer.set(freqDataSlice, bufferPos * runOptions.modelFFTLength);
-    const spectralMax = getArrayMax(freqDataSlice);
+//     const bufferPos = frameCount % rotatingBufferNumFrames;
+//     rotatingBuffer.set(freqDataSlice, bufferPos * runOptions.modelFFTLength);
+//     const spectralMax = getArrayMax(freqDataSlice);
 
-    tracker.tick(spectralMax > runOptions.magnitudeThreshold);
-    if (tracker.shouldFire()) {
-      const freqData = getFrequencyDataFromRotatingBuffer(
-        rotatingBuffer, frameCount - runOptions.numFrames);
-      plotSpectrogram(
-        spectrogramCanvas, freqData,
-        runOptions.modelFFTLength, runOptions.modelFFTLength);
-      const inputTensor = getInputTensorFromFrequencyData(freqData);
+//     tracker.tick(spectralMax > runOptions.magnitudeThreshold);
+//     if (tracker.shouldFire()) {
+//       const freqData = getFrequencyDataFromRotatingBuffer(
+//         rotatingBuffer, frameCount - runOptions.numFrames);
+//       plotSpectrogram(
+//         spectrogramCanvas, freqData,
+//         runOptions.modelFFTLength, runOptions.modelFFTLength);
+//       const inputTensor = getInputTensorFromFrequencyData(freqData);
 
-      if (collectOneSpeechSample) {
-        stopRequested = true;
-        clearInterval(intervalTask);
+//       if (collectOneSpeechSample) {
+//         stopRequested = true;
+//         clearInterval(intervalTask);
 
-        if (transferTensors[collectOneSpeechSample] == null) {
-          transferTensors[collectOneSpeechSample] = [];
-        }
-        transferTensors[collectOneSpeechSample].push(inputTensor);
-        collectWordButtons[collectOneSpeechSample].textContent =
-          `Collect "${collectOneSpeechSample}" sample ` +
-          `(${transferTensors[collectOneSpeechSample].length})`;
-        enableAllCollectWordButtons();
-        const wordDiv = collectWordDivs[collectOneSpeechSample];
-        const newCanvas = document.createElement('canvas');
-        newCanvas.style['display'] = 'inline-block';
-        newCanvas.style['vertical-align'] = 'middle';
-        newCanvas.style['height'] = '100px';
-        newCanvas.style['width'] = '150px';
-        newCanvas.style['padding'] = '5px';
-        wordDiv.appendChild(newCanvas);
-        plotSpectrogram(
-          newCanvas, freqData,
-          runOptions.modelFFTLength, runOptions.modelFFTLength);
-      } else {
-        tf.tidy(() => {
-          const t0 = performance.now();
-          if (model.outputs.length === 1) {
-            // No transfer learning has occurred; no transfer learned model
-            // has been saved in IndexedDB.
-            const probs = model.predict(inputTensor);
-            plotPredictions(predictionCanvas, words, probs.dataSync());
-            const recogIndex = tf.argMax(probs, -1).dataSync()[0];
-          } else {
-            // This is a two headed model from transfer learning.
-            const probs = model.predict(inputTensor);
-            const oldWordProbs = probs[0];
-            const transferWordProbs = probs[1];
-            plotPredictions(predictionCanvas, words, oldWordProbs.dataSync());
-            const recogIndex = tf.argMax(oldWordProbs, -1).dataSync()[0];
-            plotPredictions(
-                transferPredictionCanvas, transferWords,
-                transferWordProbs.dataSync());
-          }
-          const t1 = performance.now();
-        });
-        inputTensor.dispose();
-      }
-    } else if (tracker.isResting()) {
-      // Clear prediction plot.
-      plotPredictions(predictionCanvas);
-      plotPredictions(transferPredictionCanvas);
-    }
+//         if (transferTensors[collectOneSpeechSample] == null) {
+//           transferTensors[collectOneSpeechSample] = [];
+//         }
+//         transferTensors[collectOneSpeechSample].push(inputTensor);
+//         collectWordButtons[collectOneSpeechSample].textContent =
+//           `Collect "${collectOneSpeechSample}" sample ` +
+//           `(${transferTensors[collectOneSpeechSample].length})`;
+//         enableAllCollectWordButtons();
+//         const wordDiv = collectWordDivs[collectOneSpeechSample];
+//         const newCanvas = document.createElement('canvas');
+//         newCanvas.style['display'] = 'inline-block';
+//         newCanvas.style['vertical-align'] = 'middle';
+//         newCanvas.style['height'] = '100px';
+//         newCanvas.style['width'] = '150px';
+//         newCanvas.style['padding'] = '5px';
+//         wordDiv.appendChild(newCanvas);
+//         plotSpectrogram(
+//           newCanvas, freqData,
+//           runOptions.modelFFTLength, runOptions.modelFFTLength);
+//       } else {
+//         tf.tidy(() => {
+//           const t0 = performance.now();
+//           if (model.outputs.length === 1) {
+//             // No transfer learning has occurred; no transfer learned model
+//             // has been saved in IndexedDB.
+//             const probs = model.predict(inputTensor);
+//             plotPredictions(predictionCanvas, words, probs.dataSync());
+//             const recogIndex = tf.argMax(probs, -1).dataSync()[0];
+//           } else {
+//             // This is a two headed model from transfer learning.
+//             const probs = model.predict(inputTensor);
+//             const oldWordProbs = probs[0];
+//             const transferWordProbs = probs[1];
+//             plotPredictions(predictionCanvas, words, oldWordProbs.dataSync());
+//             const recogIndex = tf.argMax(oldWordProbs, -1).dataSync()[0];
+//             plotPredictions(
+//                 transferPredictionCanvas, transferWords,
+//                 transferWordProbs.dataSync());
+//           }
+//           const t1 = performance.now();
+//         });
+//         inputTensor.dispose();
+//       }
+//     } else if (tracker.isResting()) {
+//       // Clear prediction plot.
+//       plotPredictions(predictionCanvas);
+//       plotPredictions(transferPredictionCanvas);
+//     }
 
-    frameCount++;
-  }
+//     frameCount++;
+//   }
 
-  intervalTask = setInterval(
-    onEveryAudioFrame,
-    analyser.frequencyBinCount / audioContext.sampleRate * 1000);
-}
-
-function getArrayMax(xs) {
-  let max = -Infinity;
-  for (let i = 0; i < xs.length; ++i) {
-    if (xs[i] > max) {
-      max = xs[i];
-    }
-  }
-  return max;
-}
-
-function getFrequencyDataFromRotatingBuffer(rotatingBuffer, frameCount) {
-  const size = runOptions.numFrames * runOptions.modelFFTLength;
-  const freqData = new Float32Array(size);
-
-  const rotatingBufferSize = rotatingBuffer.length;
-  const rotatingBufferNumFrames =
-    rotatingBufferSize / runOptions.modelFFTLength;
-  while (frameCount < 0) {
-    frameCount += rotatingBufferNumFrames;
-  }
-  const indexBegin =
-    (frameCount % rotatingBufferNumFrames) * runOptions.modelFFTLength;
-  const indexEnd = indexBegin + size;
-
-  for (let i = indexBegin; i < indexEnd; ++i) {
-    freqData[ i - indexBegin]  = rotatingBuffer[i % rotatingBufferSize];
-  }
-  return freqData;
-}
-
-function getInputTensorFromFrequencyData(freqData) {
-  const size = freqData.length;
-  const tensorBuffer = tf.buffer([size]);
-  for (let i = 0; i < freqData.length; ++i) {
-    tensorBuffer.set(freqData[i], i);
-  }
-  return normalize(tensorBuffer.toTensor().reshape([
-    1, runOptions.numFrames, runOptions.modelFFTLength, 1]));
-}
+//   intervalTask = setInterval(
+//     onEveryAudioFrame,
+//     analyser.frequencyBinCount / audioContext.sampleRate * 1000);
+// }
 
 startButton.addEventListener('click', async () => {
-  await recognizer.start();
+  await recognizer.start((spectrogram, probs) => {
+
+    plotSpectrogram(
+        spectrogramCanvas, spectrogram.freqData,
+        spectrogram.fftLength, spectrogram.fftLength);
+    plotPredictions(predictionCanvas, words, probs);
+  });
   startButton.disabled = true;
   stopButton.disabled = false;
 });
