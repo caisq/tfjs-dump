@@ -27,7 +27,7 @@ function plotPredictions(canvas, candidateWords, probabilities, topK) {
   const barWidth = canvas.width / candidateWords.length * 0.8;
   const barGap = canvas.width / candidateWords.length * 0.2;
 
-  ctx.font = '12px Arial';
+  ctx.font = '24px Arial';
   ctx.beginPath();
   for (let i = 0; i < candidateWords.length; ++i) {
     let word = candidateWords[i];
@@ -43,9 +43,9 @@ function plotPredictions(canvas, candidateWords, probabilities, topK) {
     const x = i * (barWidth + barGap);
     ctx.rect(
       x,
-      predictionCanvas.height * 0.85 * (1 - probabilities[i]),
+      predictionCanvas.height * 0.95 * (1 - probabilities[i]),
       barWidth,
-      predictionCanvas.height * 0.85 * probabilities[i]);
+      predictionCanvas.height * 0.95 * probabilities[i]);
   }
   ctx.stroke();
 }
