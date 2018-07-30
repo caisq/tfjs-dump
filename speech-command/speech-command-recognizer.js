@@ -120,8 +120,6 @@ class BrowserFftSpeechCommandRecognizer {
     }
 
     const freqDataSlice = this.freqData_.slice(0, this.modelFFTLength_);
-    // TODO(cais): Make this a callback. Remove runOptions.
-    plotSpectrum(mainCanvas, freqDataSlice, runOptions);
 
     const bufferPos = this.frameCount_ % this.rotatingBufferNumFrames_;
     this.rotatingBuffer_.set(freqDataSlice, bufferPos * this.modelFFTLength_);
@@ -137,20 +135,22 @@ class BrowserFftSpeechCommandRecognizer {
           freqData, this.numFrames_, this.modelFFTLength_);
 
       tf.tidy(() => {
-        const t0 = performance.now();
-        const probs = this.model.predict(inputTensor);
         if (this.model.outputs.length === 1) {
           // No transfer learning has occurred; no transfer learned model
           // has been saved in IndexedDB.
+          const t0 = performance.now();
+          const probs = this.model.predict(inputTensor).dataSync();
+          console.log(
+              `Inference on audio frame took ${performance.now() - t0} ms`);
           this.wordCallback_(
-              {freqData, fftLength: this.modelFFTLength_}, probs.dataSync());
+              {freqData, fftLength: this.modelFFTLength_}, probs);
         } else {
           // This is a two headed model from transfer learning.
           this.wordCallback_(
               {freqData, fftLength: this.modelFFTLength_},
-              probs.map(p => p.dataSync()));
+              this.model.predict(inputTensor).map(p => p.dataSync()));
         }
-        const t1 = performance.now();
+
       });
       inputTensor.dispose();
       // }

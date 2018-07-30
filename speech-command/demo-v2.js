@@ -79,8 +79,8 @@ async function loadModelAndMetadataAndWarmUpModel(loadFromRemote) {
   logToStatusDisplay(`Loaded ${words.length} words: ` + words);
 
   startButton.disabled = false;
-  enterLearnWordsButton.disabled = false;
-  startTransferLearnButton.disabled = false;
+  // enterLearnWordsButton.disabled = false;
+  // startTransferLearnButton.disabled = false;
   logToStatusDisplay(`Done loading.`);
   // // 4. If model has more than one heads, load the transfer words.
   // if (model.outputs.length > 1) {
@@ -99,7 +99,7 @@ startButton.addEventListener('click', async () => {
         spectrogramCanvas, spectrogram.freqData,
         spectrogram.fftLength, spectrogram.fftLength);
     const originalWordsScores = Array.isArray(scores) ? scores[0] : scores;
-    const topK = 3;
+    const topK = 4;
     plotPredictions(predictionCanvas, words, originalWordsScores, topK);
     if (Array.isArray(scores)) {
       // Plot scores for transfer-learning words.
@@ -120,71 +120,71 @@ stopButton.addEventListener('click', async () => {
 });
 
 // UI code foro transfer learning.
-const learnWordsInput = document.getElementById('learn-words');
-const enterLearnWordsButton = document.getElementById('enter-learn-words');
-const collectButtonsDiv = document.getElementById('collect-words');
-const startTransferLearnButton =
-  document.getElementById('start-transfer-learn');
+// const learnWordsInput = document.getElementById('learn-words');
+// const enterLearnWordsButton = document.getElementById('enter-learn-words');
+// const collectButtonsDiv = document.getElementById('collect-words');
+// const startTransferLearnButton =
+//   document.getElementById('start-transfer-learn');
 
-enterLearnWordsButton.addEventListener('click', () => {
-  enterLearnWordsButton.disabled = true;
-  transferWords =
-    learnWordsInput.value.trim().split(',').map(w => w.trim());
+// enterLearnWordsButton.addEventListener('click', () => {
+//   enterLearnWordsButton.disabled = true;
+//   transferWords =
+//     learnWordsInput.value.trim().split(',').map(w => w.trim());
 
-  for (const word of transferWords) {
-    const wordDiv = document.createElement('div');
-    wordDiv.classList.add('word-div');
-    wordDiv.style['border'] = 'solid 1px'
-    const button = document.createElement('button');
-    button.style['display'] = 'inline-block';
-    button.style['vertical-align'] = 'middle';
-    button.textContent = `Collect "${word}" sample (0)`;
-    wordDiv.appendChild(button);
-    wordDiv.style['height'] = '100px';
-    collectButtonsDiv.appendChild(wordDiv);
-    collectWordDivs[word] = wordDiv;
-    collectWordButtons[word] = button;
+//   for (const word of transferWords) {
+//     const wordDiv = document.createElement('div');
+//     wordDiv.classList.add('word-div');
+//     wordDiv.style['border'] = 'solid 1px'
+//     const button = document.createElement('button');
+//     button.style['display'] = 'inline-block';
+//     button.style['vertical-align'] = 'middle';
+//     button.textContent = `Collect "${word}" sample (0)`;
+//     wordDiv.appendChild(button);
+//     wordDiv.style['height'] = '100px';
+//     collectButtonsDiv.appendChild(wordDiv);
+//     collectWordDivs[word] = wordDiv;
+//     collectWordButtons[word] = button;
 
-    button.addEventListener('click', () => {
-      console.log('In button callback');
-      disableAllCollectWordButtons();
-      logToStatusDisplay(`Collect one sample of word "${word}"`);
-      recognizer.start(async (spectrogram, probs) => {
-        await recognizer.stop();
+//     button.addEventListener('click', () => {
+//       console.log('In button callback');
+//       disableAllCollectWordButtons();
+//       logToStatusDisplay(`Collect one sample of word "${word}"`);
+//       recognizer.start(async (spectrogram, probs) => {
+//         await recognizer.stop();
 
-        if (transferTensors[word] == null) {
-          transferTensors[word] = [];
-        }
-        const inputTensor =
-            recognizer.getInputTensorFromFrequencyData(spectrogram.freqData);
+//         if (transferTensors[word] == null) {
+//           transferTensors[word] = [];
+//         }
+//         const inputTensor =
+//             recognizer.getInputTensorFromFrequencyData(spectrogram.freqData);
 
-        transferTensors[word].push(inputTensor);
-        collectWordButtons[word].textContent =
-          `Collect "${word}" sample ` +
-          `(${transferTensors[word].length})`;
-        enableAllCollectWordButtons();
-        const wordDiv = collectWordDivs[word];
-        const newCanvas = document.createElement('canvas');
-        newCanvas.style['display'] = 'inline-block';
-        newCanvas.style['vertical-align'] = 'middle';
-        newCanvas.style['height'] = '100px';
-        newCanvas.style['width'] = '150px';
-        newCanvas.style['padding'] = '5px';
-        wordDiv.appendChild(newCanvas);
-        plotSpectrogram(
-            newCanvas, spectrogram.freqData,
-            recognizer.fftLength, recognizer.fftLength);
-      }, {
-        overlapFactor: 0
-      });
-    });
-  }
-});
+//         transferTensors[word].push(inputTensor);
+//         collectWordButtons[word].textContent =
+//           `Collect "${word}" sample ` +
+//           `(${transferTensors[word].length})`;
+//         enableAllCollectWordButtons();
+//         const wordDiv = collectWordDivs[word];
+//         const newCanvas = document.createElement('canvas');
+//         newCanvas.style['display'] = 'inline-block';
+//         newCanvas.style['vertical-align'] = 'middle';
+//         newCanvas.style['height'] = '100px';
+//         newCanvas.style['width'] = '150px';
+//         newCanvas.style['padding'] = '5px';
+//         wordDiv.appendChild(newCanvas);
+//         plotSpectrogram(
+//             newCanvas, spectrogram.freqData,
+//             recognizer.fftLength, recognizer.fftLength);
+//       }, {
+//         overlapFactor: 0
+//       });
+//     });
+//   }
+// });
 
-startTransferLearnButton.addEventListener('click', async () => {
-  const [xs, ys] = prepareLearnTensors();
-  await doTransferLearning(xs, ys);
-});
+// startTransferLearnButton.addEventListener('click', async () => {
+//   const [xs, ys] = prepareLearnTensors();
+//   await doTransferLearning(xs, ys);
+// });
 
 function disableAllCollectWordButtons() {
   for (const word in collectWordButtons) {
