@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+  <head>
+      <style>
+          textarea {
+              width: 100%;
+              height: auto;
+          }
+      </style>
+  </head>   
+  <body>
+    <textarea id="logs" rows="40"></textarea>
+
+    <script>
+      const logs = document.getElementById('logs');
+      function log(message) {
+        logs.textContent += message + '\n';
+      }
+
+      const OfflineAudioContextConstructor =
+         window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const samplingFrequencyHz = 44100;
+      const maxRecordingLengthSeconds = 1;
+      const offlineAudioContext = new OfflineAudioContextConstructor(
+          1, samplingFrequencyHz * maxRecordingLengthSeconds * 2, samplingFrequencyHz);
+      const source = offlineAudioContext.createBufferSource();
+
+      function createSawtoothBuffer(audioContext, length, sampleRate) {
+        const buffer = audioContext.createBuffer(1, length, sampleRate);
+        const channelData = buffer.getChannelData(0);
+        for (let i = 0; i < length; ++i) {
+          channelData[i] = (i % 2500 - 1250) / 1250;
+        }
+        return buffer;
+      }
+      source.buffer = createSawtoothBuffer(
+          offlineAudioContext, 44100, samplingFrequencyHz);
+
+      const nFFTIn = 1024;
+      const analyser = offlineAudioContext.createAnalyser();
+      analyser.fftSize = nFFTIn * 2;
+      analyser.smoothingTimeConstant = 0.0;
+      const freqData = new Float32Array(analyser.frequencyBinCount);
+
+      source.connect(analyser);
+      analyser.connect(offlineAudioContext.destination);
+      source.start();
+      log('Source started.');
+
+      const frameDuration = nFFTIn / samplingFrequencyHz;
+      const suspendTime = frameDuration * 10;
+      offlineAudioContext.suspend(suspendTime).then(async () => {
+        analyser.getFloatFrequencyData(freqData);
+        log(freqData);
+      }).catch(err => {
+        log('Failed to suspend offline audio context at time ' + suspendTime +
+            ': erorr message:');
+        log(err.message);
+      });
+
+      log('Calling startRendering()');
+      offlineAudioContext.startRendering().catch(err => {
+        log('Failed to render offline audio context:', err);
+      });
+
+    </script>
+  </body>
+</html>
