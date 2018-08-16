@@ -2,7 +2,7 @@
 Usage example:
 
 ```sh
-python model.py "${HOME}/ml-data/speech-command-browser" 1024 44100 5000
+python model.py "${HOME}ml-data/speech-command-browser" 232
 ```
 """
 from __future__ import absolute_import
@@ -136,7 +136,7 @@ def train_model(root_dir,
   model.fit(xs,
             ys,
             batch_size=64,
-            epochs=100,
+            epochs=200,
             shuffle=True,
             validation_split=0.1)
 
@@ -150,8 +150,8 @@ if __name__ == '__main__':
       'data_root', type=str, help='Root directory for data.')
   parser.add_argument(
       'n_fft', type=int,
-      help='Number of FFT points. By Nyquist theorem, this corresponds to '
-      'half of the sampling frequency.')
+      help='Number of FFT points (after possible truncation). This is the '
+      'number of frequency points per column of spectrogram.')
   parser.add_argument(
       '--tf_debug', action='store_true',
       help='Use TensroFlow Debugger CLI.')
