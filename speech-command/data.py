@@ -107,7 +107,7 @@ def load_spectrograms(dat_path,
   return specs, to_one_hot(labels, unique_labels)
 
 
-def load_data(root_dir, n_fft):
+def load_data(root_dir, n_fft, include_words=None):
   '''Load data from a directory.
 
   Args:
@@ -117,6 +117,7 @@ def load_data(root_dir, n_fft):
       .dat files.
     n_fft: Number of FFT points for each time slice. This corresponds to
       half the sampling frequency.
+    include_words: Optional word list as a `list` of `str`. Use only these words.
 
   Returns:
     - Unique word labels as a `list` of `str`s.
@@ -131,6 +132,20 @@ def load_data(root_dir, n_fft):
   unique_labels = sorted([
       os.path.basename(path) for path in glob.glob(os.path.join(root_dir, '*'))
       if os.path.isdir(path)])
+
+  if include_words:
+    # Make sure that all the specified elements of include_words are available
+    # in the original unique_labels.
+    filtered_labels = []
+    for w in include_words:
+      if w not in unique_labels:
+        raise ValueError('Word "%s" in include_words is not available.' % w)
+      filtered_labels.append(w)
+    if '_background_noise_' in unique_labels:
+      filtered_labels.append('_background_noise_')
+    if '_unknown_' in unique_labels:
+      filtered_labels.append('_unknown_')
+    unique_labels = filtered_labels
   print('Unique labels (count = %d) = %s' %
         (len(unique_labels), unique_labels))
 
