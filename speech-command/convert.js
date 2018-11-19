@@ -28,14 +28,6 @@ let outputArrays = null;
 let recordingCounter;
 let numRecordings;
 
-// function discardInvalidTrailingSamples(array) {
-//   let n = 0;
-//   while (Number.isFinite(array[n]) && n < array.length) {
-//     ++n;
-//   }
-//   return Array.from(array.slice(0, n));
-// }
-
 function collectConversionResults() {
   return {
     data: Array.from(outputArrays[0]),
@@ -115,8 +107,6 @@ async function startNewRecording() {
 
       function detectFreeze() {
         reject(new Error('Frozen'));
-        // popLastElementFromOutputArrays();
-        // setTimeout(startNewRecording, 1);
       }
       setTimeout(detectFreeze, MAX_RECORDING_LENGTH_SEC * 1e3);
 
