@@ -4,7 +4,7 @@ async function run() {
   const browser = await pup.launch();
   const page = await browser.newPage();
 
-  await page.goto(`file://${__dirname}/test.html`);
+  await page.goto(`file://${__dirname}/puppeteer-convert.html`);
 
   const fileInput = await page.$('#fileInput');
   console.log(fileInput.uploadFile);
