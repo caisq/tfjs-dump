@@ -16,7 +16,8 @@
  */
 
 const fileInput = document.getElementById('fileInput');
-const convertButton = document.getElementById('convert');
+// TODO(cais): Remove.
+// const convertButton = document.getElementById('convert');
 
 const MAX_RECORDING_LENGTH_SEC = 1.1;
 
@@ -27,9 +28,17 @@ let outputArrays = null;
 let recordingCounter;
 let numRecordings;
 
+// function discardInvalidTrailingSamples(array) {
+//   let n = 0;
+//   while (Number.isFinite(array[n]) && n < array.length) {
+//     ++n;
+//   }
+//   return Array.from(array.slice(0, n));
+// }
+
 function collectConversionResults() {
   return {
-    data: outputArrays.length >= 1 ? Array.from(outputArrays[0]) : undefined,
+    data: Array.from(outputArrays[0]),
     numRecordings,
     logText
   };
@@ -104,17 +113,12 @@ async function startNewRecording() {
       source.start();
       logStatus(`DONE Calling source.start()`);
 
-      // function detectFreeze() {
-      //   console.warn(
-      //       `Detected frozen conversion! ` +
-      //       `Trying to start recording #${recordingCounter} over...`);
-      //   popLastElementFromOutputArrays();
-      //   setTimeout(startNewRecording, 1);
-      // }
-      // detectFreezeTask = setTimeout(detectFreeze, maxRecordingLengthSeconds *
-      // 1e3);
-
-      setTimeout(() => logStatus('Boo!'), 2000);
+      function detectFreeze() {
+        reject(new Error('Frozen'));
+        // popLastElementFromOutputArrays();
+        // setTimeout(startNewRecording, 1);
+      }
+      setTimeout(detectFreeze, MAX_RECORDING_LENGTH_SEC * 1e3);
 
       // let recordingConversionSucceeded = false;
       let frameCounter = 0;
@@ -159,6 +163,9 @@ async function startNewRecording() {
               freqData.subarray(0, nFFTOut), frameCounter * nFFTOut);
         }
 
+        // if (detectFreezeTask != null) {
+        //   clearTimeout(detectFreezeTask);
+        // }
         resolve();
         // if (recordingConversionSucceeded) {
         //   recordingCounter++;
@@ -168,11 +175,6 @@ async function startNewRecording() {
         //   outputArrays.pop();
         //   source.stop();
         //   setTimeout(startNewRecording, 1);
-        // }
-
-        // if (detectFreezeTask != null) {
-        //   clearTimeout(detectFreezeTask);
-        //   detectFreezeTask = null;
         // }
       });
 
@@ -187,11 +189,11 @@ async function startNewRecording() {
   });
 }
 
-convertButton.addEventListener('click', async event => {
-  convertButton.disabled = true;
-  logStatus('In convertButton callback');
-  logStatus(fileInput.files);  // DEBUG
-  logStatus(fileInput.files.length);  // DEBUG
+// convertButton.addEventListener('click', async event => {
+async function doConversion() {
+  // logStatus('In convertButton callback');
+  // logStatus(fileInput.files);  // DEBUG
+  // logStatus(fileInput.files.length);  // DEBUG
   if (fileInput.files.length > 0) {
     outputArrays = [];
     numRecordings = fileInput.files.length;
@@ -202,4 +204,5 @@ convertButton.addEventListener('click', async event => {
   } else {
     logStatus('ERROR: Select one or more files first.');
   }
-});
+}
+// });

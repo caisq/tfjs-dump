@@ -43,35 +43,54 @@ async function run() {
   } else {
     filesToUpload.push(inputPath);
   }
-  console.log(`filesToUpload = ${filesToUpload}`);
+  filesToUpload.sort();
 
   const browser = await pup.launch();
   const page = await browser.newPage();
 
-  await page.goto(`file://${__dirname}/puppeteer-convert.html`);
-
-  const fileInput = await page.$('#fileInput');
-  console.log(`Uploading ${filesToUpload.length} dat files`);
-  await fileInput.uploadFile(...filesToUpload);
-  const convertButton = await page.$('#convert');
-  await convertButton.click();
-
-  const intervalJob = setInterval(async () => {
-    const numRecordings = await page.evaluate(() => queryRecordingCounter());
-    // const output = await page.evaluate(() => collectConversionResults());
-    // console.log(`numRecordings = ${numRecordings}`);  // DEBUG
-    // console.log(output.logText);
-    if (numRecordings === 1) {
-      clearInterval(intervalJob);
-      const output = await page.evaluate(() => collectConversionResults());
-      // console.log(output.logText);
-      console.log(`'--- Data: ---`);
-      console.log(`numRecordings = ${output.numRecordings}`);
-      console.log(output.data.length);
-      fs.writeFileSync('data.json', JSON.stringify(output.data));
-      browser.close();
+  for (const fileToUpload of filesToUpload) {
+    await page.goto(`file://${__dirname}/puppeteer-convert.html`);
+    const fileInput = await page.$('#fileInput');
+    await fileInput.uploadFile(fileToUpload);
+    // const convertButton = await page.$('#convert');
+    // await convertButton.click();
+    // const numRecordings = await page.evaluate(() => queryRecordingCounter());
+    while (true) {
+      try {
+        await page.evaluate(() => doConversion());
+      } catch (err) {
+        console.log(
+            `Detected freezing on file ${fileToUpload}. Trying again.`);
+      }
+      break;
     }
-  }, 500);
+    const results = await page.evaluate(() => collectConversionResults());
+    console.log(`Processed ${fileToUpload} (length = ${results.data.length})`);
+    // console.log(`Data length: ${results.data.length}`);
+    // console.log(`results.numRecordings = ${results.numRecordings}`);
+
+    const dataJsonFileName = `data_${path.basename(fileToUpload)}.json`;
+    console.log(`  --> ${dataJsonFileName}`);  // DEBUG
+    fs.writeFileSync(dataJsonFileName, JSON.stringify(results.data));
+  }
+  browser.close();
+
+
+  // const intervalJob = setInterval(async () => {
+  //   // const output = await page.evaluate(() => collectConversionResults());
+  //   // console.log(`numRecordings = ${numRecordings}`);  // DEBUG
+  //   // console.log(output.logText);
+  //   if (numRecordings === 1) {
+  //     clearInterval(intervalJob);
+  //     const output = await page.evaluate(() => collectConversionResults());
+  //     // console.log(output.logText);
+  //     console.log(`'--- Data: ---`);
+  //     console.log(`numRecordings = ${output.numRecordings}`);
+  //     console.log(output.data.length);
+  //     fs.writeFileSync('data.json', JSON.stringify(output.data));
+  //     browser.close();
+  //   }
+  // }, 50);
 
   // setTimeout(async () => {
   //   
