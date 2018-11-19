@@ -23,17 +23,26 @@ const MAX_RECORDING_LENGTH_SEC = 1.1;
 const OfflineAudioContextConstructor =
     window.OfflineAudioContext || window.webkitOfflineAudioContext;
 
-// TODO(cais): Remove.
-let logText = '';
-function pageInternalFunction() {
-  return {data: '24', logText};
+let outputArrays = null;
+let recordingCounter;
+let numRecordings;
+
+function collectConversionResults() {
+  return {
+    data: outputArrays.length >= 1 ? Array.from(outputArrays[0]) : undefined,
+    numRecordings,
+    logText
+  };
 }
 
+function queryRecordingCounter() {
+  return recordingCounter;
+}
+
+let logText = '';
 function logStatus(text) {
   logText += text + '\n';
 }
-
-let outputArrays = null;
 
 async function startNewRecording() {
   return new Promise((resolve, reject) => {
@@ -41,9 +50,9 @@ async function startNewRecording() {
     const samplingFrequencyHz = 44100;
     const nFFTIn = 1024;
     const nFFTOut = 232;  // TODO(cais): DO NOT HARDCODE. DO NOT SUBMIT.
-    logStatus(
-        `samplingFrequencyHz = ${samplingFrequencyHz}; ` +
-        `nFFTIn = ${nFFTIn}; nFFTOut = ${nFFTOut}`);
+    // logStatus(
+    //     `samplingFrequencyHz = ${samplingFrequencyHz}; ` +
+    //     `nFFTIn = ${nFFTIn}; nFFTOut = ${nFFTOut}`);
     // if (recordingCounter === 0) {
     //   console.log(`samplingFrequencyHz = ${samplingFrequencyHz}`);
     //   console.log(`nFFTIn = ${nFFTIn}`);
@@ -107,7 +116,7 @@ async function startNewRecording() {
 
       setTimeout(() => logStatus('Boo!'), 2000);
 
-      let recordingConversionSucceeded = false;
+      // let recordingConversionSucceeded = false;
       let frameCounter = 0;
       const frameDuration = nFFTIn / samplingFrequencyHz;
       logStatus(`frameDuration = ${frameDuration}`);
@@ -116,7 +125,10 @@ async function startNewRecording() {
         logStatus('In suspend callback');  // DEBUG
         analyser.getFloatFrequencyData(freqData);
         const outputArray = outputArrays[outputArrays.length - 1];
-        logStatus(`frameCounter = ${frameCounter}`);  // DEBUG
+        // logStatus(
+        //     `frameCounter = ${frameCounter}; ` +
+        //     `freqData.length = ${freqData.length}; ` +
+        //     `freqData[0] = ${freqData[0]}`);  // DEBUG
         outputArray.set(freqData.subarray(0, nFFTOut), frameCounter * nFFTOut);
 
         while (true) {
@@ -132,13 +144,17 @@ async function startNewRecording() {
 
           analyser.getFloatFrequencyData(freqData);
           if (freqData[0] === -Infinity && freqData[1] === -Infinity) {
-            recordingConversionSucceeded = true;
+            // recordingConversionSucceeded = true;
+            recordingCounter++;
             logStatus('Success!');
             break;
           }
           // TODO(cais): Simplify.
           const outputArray = outputArrays[outputArrays.length - 1];
-          logStatus(`frameCounter = ${frameCounter}`);  // DEBUG
+          // logStatus(
+          //     `frameCounter = ${frameCounter}; ` +
+          //     `freqData.length = ${freqData.length}; ` +
+          //     `freqData[0] = ${freqData[0]}`);  // DEBUG
           outputArray.set(
               freqData.subarray(0, nFFTOut), frameCounter * nFFTOut);
         }
@@ -174,10 +190,13 @@ async function startNewRecording() {
 convertButton.addEventListener('click', async event => {
   convertButton.disabled = true;
   logStatus('In convertButton callback');
+  logStatus(fileInput.files);  // DEBUG
+  logStatus(fileInput.files.length);  // DEBUG
   if (fileInput.files.length > 0) {
     outputArrays = [];
-    // numRecordings = datFileInput.files.length;
-    // recordingCounter = 0;
+    numRecordings = fileInput.files.length;
+    recordingCounter = 0;
+    logStatus(`Calling startNewRecording: numRecordings = ${numRecordings}`);
     await startNewRecording();
     logStatus(`Done startNewRecording()`);
   } else {
