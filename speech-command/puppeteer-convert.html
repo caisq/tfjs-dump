@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8">
     <title>Test HTML page!</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
   </head>
   <body>
 
     <h1>Test HTML Page!!!!</h1>
 
     <span id="span1"></span>
-    <input type="file" id="fileInput"></input>
-    <button id="fooButton">Foo Button</button>
+    <input type="file" id="fileInput">
+    <button id="convert">Convert</button>
 
-    <script>
+    <!-- <script>
       const span1 = document.getElementById('span1');
       const fileInput = document.getElementById('fileInput');
       let text;
@@ -48,7 +48,9 @@
           text
         };
       }
-    </script>
-
+    </script> -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="./audio-utils.js"></script>
+    <script src="./convert.js"></script>
   </body>
 </html>
