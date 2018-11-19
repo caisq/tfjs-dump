@@ -12,14 +12,14 @@
     <span id="span1"></span>
     <input type="file" id="fileInput"></input>
     <button id="fooButton">Foo Button</button>
-    
+
     <script>
       const span1 = document.getElementById('span1');
       const fileInput = document.getElementById('fileInput');
       let text;
       document.getElementById('fooButton').addEventListener('click', async () => {
         span1.textContent = 'Bwahahahahahaha! ';
-        
+
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
         span1.textContent += audioCtx.sampleRate + ' Hz, '
@@ -49,6 +49,6 @@
         };
       }
     </script>
-  
+
   </body>
 </html>
