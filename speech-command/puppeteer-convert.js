@@ -70,11 +70,11 @@ async function runBaseLevelDirectory(inputPath, outputPath) {
   const page = await browser.newPage();
 
   for (const fileToUpload of filesToUpload) {
-    await page.goto(`file://${__dirname}/puppeteer-convert.html`);
-    const fileInput = await page.$('#fileInput');
-    await fileInput.uploadFile(fileToUpload);
     while (true) {
       try {
+        await page.goto(`file://${__dirname}/puppeteer-convert.html`);
+        const fileInput = await page.$('#fileInput');
+        await fileInput.uploadFile(fileToUpload);
         await page.evaluate(() => doConversion());
         break;
       } catch (err) {
@@ -84,10 +84,6 @@ async function runBaseLevelDirectory(inputPath, outputPath) {
     }
     const results = await page.evaluate(() => collectConversionResults());
     writeSpectrogramToFileStream(outputStream, results.data);
-    // console.log(`Processed ${fileToUpload} (length = ${results.data.length})`);
-    // const dataJsonFileName = `data_${path.basename(fileToUpload)}.json`;
-    // console.log(`  --> ${dataJsonFileName}`);  // DEBUG
-    // fs.writeFileSync(dataJsonFileName, JSON.stringify(results.data));
   }
 
   browser.close();
@@ -121,7 +117,6 @@ async function runNestedDirectory(inputDir, outputRoot, outputRelPath = '') {
     const isBaseLevel = isBaseLevelDirectory(fullPath);
     if (isBaseLevel) {
       const outputDir = path.join(outputRoot, outputRelPath);
-      console.log('Creating directory: ' + outputDir);
       if (fs.existsSync(outputDir) && fs.lstatSync(outputDir).isFile()) {
         throw new Error(
             `Expected path to be nonexistent or a directory, ` + 
