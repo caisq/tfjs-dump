@@ -54,16 +54,19 @@ def load_spectrograms(dat_path,
   Returns:
     A `list` of 2D numpy arrays.
   '''
+  print('dat_path = %s' % dat_path)  # DEBUG
   specs = []
   spec_lengths = []
   labels = []
   with open(dat_path, 'rb') as f:
     buffer = f.read()
     buffer_len = len(buffer)
+    print('buffer_len = %d' % buffer_len)   # DEBUG
     num_floats = int(buffer_len / 4)
 
     data = np.array(struct.unpack('=%df' % num_floats, buffer))
     data = data.reshape([int(num_floats / n_fft), n_fft]).T
+    print('data.shape: %s' % (data.shape,))  # DEBUG
 
   num_discarded = 0
   num_kept = 0
@@ -72,11 +75,12 @@ def load_spectrograms(dat_path,
     t_begin = t
     t_end = t + 1
     while (t_end < data.shape[1] and
-           (not np.isinf(data[0, t_end]) and data[0, t_end] != 0.0)):
+           (not np.isnan(data[0, t_end]) and not np.isinf(data[0, t_end]) and
+            data[0, t_end] != 0.0)):
       t_end += 1
     if t_end >= data.shape[1]:
       break
-    # print('t_begin = %d, t_end = %d' % (t_begin, t_end))
+    # print('t_begin = %d, t_end = %d' % (t_begin, t_end))  # DEBUG
 
     spec = data[:, t_begin : t_end]
     frame_count = t_end - t_begin
@@ -97,7 +101,8 @@ def load_spectrograms(dat_path,
       num_kept += 1
 
     t = t_end + 1
-    while t < data.shape[1] and (np.isinf(data[0, t]) or data[0, t] == 0.0):
+    while (t < data.shape[1] and
+           (np.isnan(data[0, t]) or np.isinf(data[0, t]) or data[0, t] == 0.0)):
       t += 1
     if t >= data.shape[1]:
       break
