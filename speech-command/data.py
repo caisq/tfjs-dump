@@ -54,19 +54,16 @@ def load_spectrograms(dat_path,
   Returns:
     A `list` of 2D numpy arrays.
   '''
-  print('dat_path = %s' % dat_path)  # DEBUG
   specs = []
   spec_lengths = []
   labels = []
   with open(dat_path, 'rb') as f:
     buffer = f.read()
     buffer_len = len(buffer)
-    print('buffer_len = %d' % buffer_len)   # DEBUG
     num_floats = int(buffer_len / 4)
 
     data = np.array(struct.unpack('=%df' % num_floats, buffer))
     data = data.reshape([int(num_floats / n_fft), n_fft]).T
-    print('data.shape: %s' % (data.shape,))  # DEBUG
 
   num_discarded = 0
   num_kept = 0
@@ -169,8 +166,8 @@ def load_data(root_dir, n_fft, include_words=None):
         ys = np.concatenate([ys, file_ys], 0)
       # plt.imshow(spec, interpolation='bilinear', aspect='auto')
       # plt.show()
-  print(xs.shape)
-  print(ys.shape)
+  print('xs.shape = %s' % (xs.shape,))
+  print('ys.shape = %s' % (ys.shape,))
 
   # Randomly shuffle the data.
   num_examples = xs.shape[0]
