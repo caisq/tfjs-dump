@@ -48,6 +48,8 @@ def create_model(input_shape, num_classes):
       loss='categorical_crossentropy',
       optimizer=tf.train.GradientDescentOptimizer(0.01),
       metrics=['accuracy'])
+  # Note on optimizer:
+  #   * rmsprop doesn't work as well.
   model.summary()
 
   # Equivalent TensorFlow.js code:
@@ -120,6 +122,7 @@ def create_model(input_shape, num_classes):
 
 def train_model(root_dir,
                 n_fft,
+                epochs,
                 include_words=None,
                 debug=False):
   words, xs, ys = data.load_data(
@@ -145,7 +148,7 @@ def train_model(root_dir,
   model.fit(xs,
             ys,
             batch_size=64,
-            epochs=200,
+            epochs=epochs,
             shuffle=True,
             validation_split=0.1)
 
@@ -160,6 +163,9 @@ if __name__ == '__main__':
       'n_fft', type=int,
       help='Number of FFT points (after possible truncation). This is the '
       'number of frequency points per column of spectrogram.')
+  parser.add_argument(
+      '--epochs', type=int, default=300,
+      help='Number of epochs to call Model.fit() with.')
   parser.add_argument(
       '--include_words', type=str, default=None,
       help='Optional list of words to include (in addition to _unknown_ '
@@ -189,5 +195,6 @@ if __name__ == '__main__':
 
   train_model(parsed.data_root,
               parsed.n_fft,
+              parsed.epochs,
               include_words=include_words,
               debug=parsed.tf_debug)
