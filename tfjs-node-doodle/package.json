@@ -4,8 +4,8 @@
   "description": "Doodling with tfjs-node",
   "private": false,
   "dependencies": {
-    "@tensorflow/tfjs": "0.11.7",
-    "@tensorflow/tfjs-node": "^0.1.7",
+    "@tensorflow/tfjs": "^0.13.5",
+    "@tensorflow/tfjs-node": "^0.1.21",
     "eslint": "4.19.1"
   },
   "scripts": {
