@@ -67,10 +67,22 @@ in the model-training step below.
 
 Usage example:
 
+To train the model for the 18-word datast (which also includes `_background_noise_`
+and `_unknown_`):
+
 ```sh
 python model.py \
     --include_words down,eight,five,four,go,left,nine,no,one,right,seven,six,stop,three,two,up,yes,zero \
-    "${HOME}/ml-data/speech-command-browser" 232
+    path/to/combined/data 232
+```
+
+To train the model for the 4-word dataset consisting of the four directional
+words (in addition to `_background_noise_` and `_unknown_`):
+
+```sh
+python model.py \
+    --include_words down,left,right,up \
+    path/to/combined/data 232
 ```
 
 ### 3.2. Using TensorFlow.js (Node.js)
