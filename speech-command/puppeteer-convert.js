@@ -317,6 +317,44 @@ async function runWavWithLabels(wavPath,
     dataset.addExample(example);
   }
 
+  // Extract the _background_noise_ examples.
+  const noiseStrideSec = 1.0;
+  const noiseStrideFrames = Math.round(noiseStrideSec / frameDurationSec);
+  console.log(`noiseStrideFrames = ${noiseStrideFrames}`);  // DEBUG
+  let frame0 = 0;
+  while (true) {
+    const frame1 = frame0 + requiredNumFrames;
+    const t0 = frame0 * frameDurationSec;
+    const t1 = frame1 * frameDurationSec;
+    const i0 = frame0 * frameSize;
+    const i1 = frame1 * frameSize;
+    if (i1 >= data.length) {
+      break;
+    }
+    // Determine if there is any overlap between the window and the events.
+    let overlap = false;
+    for (const event of events) {
+      if (!(t1 < event.tBeginSec || t0 >= event.tEndSec)) {
+        overlap = true;
+        console.log('Skipping an overlap:', t0, t1);  // DEBUG
+        frame0 = frame1;
+        break;
+      }
+    }
+    if (overlap) {
+      continue;
+    }
+    const example = {
+      label: '_background_noise_',  // TODO(cais): Do not hardcode.
+      spectrogram: {
+        data: new Float32Array(data.slice(i0, i1)),
+        frameSize
+      }
+    };
+    dataset.addExample(example);
+    frame0 = frame1;
+  }
+
   console.log(`outputPath = ${outputPath}`);  // DEBUG
   fs.writeFileSync(outputPath, new Buffer(dataset.serialize()));
 
