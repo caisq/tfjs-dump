@@ -36,7 +36,9 @@ const speechCommands = require('@tensorflow-models/speech-commands');
  *   in.
  * @return Result of conversion.
  */
-async function runFile(inputFilePath, sampleFreqHz, page) {
+async function runFile(inputFilePath,
+                       sampleFreqHz,
+                       page) {
   let browser;
   if (page == null) {
     browser = await pup.launch();
@@ -47,14 +49,20 @@ async function runFile(inputFilePath, sampleFreqHz, page) {
   const lengthSec = getDatFileLengthSec(inputFilePath, sampleFreqHz);
   console.log(`lengthSec = ${lengthSec}`);  // DEBUG
 
+  let data = [];
   let result;
+  const frameSize = 232;  // TODO(cais): DO NOT HARD CODE.
+  const param = {
+    sampleFreqHz,
+    lengthSec: 120,  // TODO(cais): DO NOT HARD CODE.
+    initFrameCount: 0
+  };  // DEBUG TODO(cais): Remove hard coded lengthSec.
   while (true) {
     while (true) {
       try {
         await page.goto(`file://${__dirname}/puppeteer-convert.html`);
         const fileInput = await page.$('#fileInput');
         await fileInput.uploadFile(inputFilePath);
-        const param = {sampleFreqHz, lengthSec: 4.0};  // DEBUG TODO(cais): Remove "5.1".
         // await page.evaluate((param) => setParam(param), param);
         await page.evaluate((param) => doConversion(param), param);
         
@@ -68,23 +76,34 @@ async function runFile(inputFilePath, sampleFreqHz, page) {
         // // DEBUG
         // const result = await page.evaluate(() => collectConversionResults());
         // console.log(result.logText);  // DEBUG
-        // break;   // TODO(cais): Remove. DEBUG.      
+        // break;   // TODO(cais): Remove. DEBUG.
       }
     }
 
     result = await page.evaluate(() => collectConversionResults());
+    if (result.data != null && result.data.length > 0) {
+      data = data.concat(result.data);
+    }
     if (result.completed) {
       // TODO(cais): Implement resumption.
+      // console.log(`Complete: frameCounter = ${result.frameCounter}`);  // DEBUG
+      // console.log(`          ${result.data.length / frameSize}`);
       break;
+    } else {
+      console.log(`*** Incomplete: Resuming from ${result.frameCounter}`);
+      // console.log(`    data.length = ${data.length}`);
+      param.initFrameCount = result.frameCounter;
     }
   }
-  console.log('=========== LOG BEGINS =============');  // DEBUG
-  console.log(result.logText);  // DEBUG
-  console.log('=========== LOG ENDS =============');  // DEBUG
+  // console.log('=========== LOG BEGINS =============');  // DEBUG
+  // console.log(result.logText);  // DEBUG
+  // console.log('=========== LOG ENDS =============');  // DEBUG
   if (browser != null) {
     browser.close();
   }
-  return result;
+  // TODO(cais): It varies a little! Fix it.
+  console.log(`Final length: ${data.length / frameSize} frames`);
+  return data;
 }
 
 /**
@@ -121,12 +140,11 @@ async function runBaseLevelDirectory(inputPath, outputPath, sampleFreqHz) {
   const dataset = new speechCommands.Dataset();
 
   for (const fileToUpload of filesToUpload) {
-    const result = await runFile(fileToUpload, sampleFreqHz, page);
-    console.log(result)
+    const data = await runFile(fileToUpload, sampleFreqHz, page);
     const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
     const example = {
       label: '_dummy_label_',
-      spectrogram: {data: new Float32Array(result.data), frameSize}
+      spectrogram: {data: new Float32Array(data), frameSize}
     };
     dataset.addExample(example);
     console.log(
@@ -214,30 +232,98 @@ async function convertWavToDat(wavPath, datPath) {
   });
 }
 
-//** */
+/**
+ * 
+ * @param {*} labelsPath Path to the .labels file.
+ */
+function loadLabels(labelsPath) {
+  const text = fs.readFileSync(labelsPath, 'utf-8');  // DEBUG
+  const lines = text.split('\n');
+  const events = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    const items = [];
+    trimmed.split(' ').forEach(x => {
+      if (x.length > 0) {
+        items.push(x);
+      }
+    });
+    if (items.length !== 3) {
+      throw new Error(`Cannot parse line in ${labelsPath}: "${line}"`);
+    }
+    const label = items[0];
+    const tBeginSec = +items[1];
+    const tEndSec = +items[2];
+    if (tEndSec <= tBeginSec) {
+      throw new Error(
+          `tEnd is earlier than or equal to tBegin in: "${line}"`);
+    }
+    events.push({label, tBeginSec, tEndSec});
+  }
+  return events;
+}
+
 async function runWavWithLabels(wavPath,
                                 labelsPath,
+                                nFFTIn,
                                 targetSampleFreqHz,
                                 outputPath) {
+  const events = loadLabels(labelsPath);
+  console.log(events);  // DEBUG
+  
   // Convert the .wav file to .dat format.
   console.log(`Converting ${wavPath} to .dat format...`);
   const datPath = await convertWavToDat(wavPath);
   console.log(`.dat file created at ${datPath}`);
-  // TODO(cais): Clean up .dat file.
+  
 
-  const result = await runFile(datPath, targetSampleFreqHz);
-  console.log(result.data.length);  // DEBUG
+  const data = await runFile(datPath, targetSampleFreqHz);
+  const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
+  console.log('data.length =', data.length);  // DEBUG
+  console.log('data #frames =', data.length / frameSize);  // DEBUG
+  const requiredNumFrames = 43; // TODO(cais): DO NOT HARDCODE.
 
   const dataset = new speechCommands.Dataset();
-  const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
-  const example = {
-    label: '_dummy_label_',
-    spectrogram: {data: new Float32Array(result.data), frameSize}
-  };
-  dataset.addExample(example);
+  const frameDurationSec = nFFTIn / targetSampleFreqHz;
+  for (const event of events) {
+    const frame0 = Math.floor(event.tBeginSec / frameDurationSec);
+    let frame1 = Math.floor(event.tEndSec / frameDurationSec);
+    if (frame1 - frame0 < requiredNumFrames) {
+      frame1 = frame0 + requiredNumFrames;
+      // TODO(cais): Add logic for temporal jitter.
+    } else if (frame1 - frame0 > requiredNumFrames) {
+      throw new Error('Not Implemented yet')
+    }
+    const i0 = frame0 * frameSize;
+    const i1 = frame1 * frameSize;
+
+    if (i1 >= data.length) {
+      console.warn(`WARNING: Skipping and event of label ${event.label}`);
+      continue;
+    }
+    console.log(
+      `Label ${event.label}: [${event.tBeginSec}, ${event.tEndSec}] ` +
+      `--> [${i0}, ${i1}]`);
+    const example = {
+      label: event.label,
+      spectrogram: {
+        data: new Float32Array(data.slice(i0, i1)),
+        frameSize
+      }
+    };
+    dataset.addExample(example);
+  }
 
   console.log(`outputPath = ${outputPath}`);  // DEBUG
   fs.writeFileSync(outputPath, new Buffer(dataset.serialize()));
+
+
+
+  // Clean up the temporary .dat file.
+  fs.unlinkSync(datPath);
 }
 
 async function run() {
@@ -254,6 +340,11 @@ async function run() {
     type: 'string',
     help: 'Path to a .labels file. This flag must be used in case the ' +
         'input path is a single .wav file.'
+  });
+  parser.addArgument('--nFFTIn', {
+    type: 'int',
+    defaultValue: 1024,
+    help: 'Target sampling frequency in Hz'
   });
   parser.addArgument('--targetSampleFreqHz', {
     type: 'int',
@@ -279,8 +370,8 @@ async function run() {
       }
       
       await runWavWithLabels(
-          args.inputPath, args.labelsPath, args.targetSampleFreqHz,
-          args.outputPath);
+          args.inputPath, args.labelsPath, args.nFFTIn,
+          args.targetSampleFreqHz, args.outputPath);
     } else {
       throw new Error(
           `Unsupported extension name in input file. ` +
