@@ -17,32 +17,19 @@
 
 const fs = require('fs');
 const path = require('path');
+
+const argparse = require('argparse');
+const childprocess = require('child_process');
 const shelljs = require('shelljs');
+const tempfile = require('tempfile');
 
 const pup = require('puppeteer');
-
-// Check input arguments.
-if (process.argv.length !== 4) {
-  console.log(`Usage:`);
-  console.log(`    node ${__filename} <INPUT_ROOT> <OUTPUT_ROOT>`);
-  process.exit(1);
-}
-
-function writeSpectrogramToFileStream(fileStream, spectrogram) {
-  spectrogram.forEach((x, i) => {
-    if (x == null) {
-      spectrogram[i] = NaN;
-    }
-  });
-  const data = new Float32Array(spectrogram);
-  const buffer = new Buffer(data.length * 4);
-  for (let i = 0; i < data.length; ++i) {
-    buffer.writeFloatLE(data[i], i * 4);
-  }
-  fileStream.write(buffer);
-}
+const speechCommands = require('@tensorflow-models/speech-commands');
 
 async function runBaseLevelDirectory(inputPath, outputPath) {
+  console.log(`runBaseLevelDirectory: ${inputPath}`);  // DEBUG
+  // TODO(cais): Extract the label from the inputPath directly.
+
   if (!fs.existsSync(inputPath)) {
     throw new Error(`Nonexistent path: ${inputPath}`);
   }
@@ -64,10 +51,10 @@ async function runBaseLevelDirectory(inputPath, outputPath) {
         `Expected output path to be nonexistent or a file, ` +
         `but got a directory: ${outputPath}`);
   }
-  const outputStream = fs.createWriteStream(outputPath);
 
   const browser = await pup.launch();
   const page = await browser.newPage();
+  const dataset = new speechCommands.Dataset();
 
   for (const fileToUpload of filesToUpload) {
     while (true) {
@@ -83,11 +70,22 @@ async function runBaseLevelDirectory(inputPath, outputPath) {
       }
     }
     const results = await page.evaluate(() => collectConversionResults());
-    writeSpectrogramToFileStream(outputStream, results.data);
+    const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
+    const example = {
+      label: '_dummy_label_',
+      spectrogram: {data: new Float32Array(results.data), frameSize}
+    }
+
+                    dataset.addExample(example);
+    console.log(
+        `Added example with label "${example.label}": ` +
+        `dataset.size() = ${dataset.size()}`);  // DEBUG
   }
 
   browser.close();
-  outputStream.end();
+
+  const serializedDataset = dataset.serialize();
+  fs.writeFileSync(outputPath, new Buffer(serializedDataset));
 }
 
 function isBaseLevelDirectory(dirPath) {
@@ -107,7 +105,7 @@ async function runNestedDirectory(inputDir, outputRoot, outputRelPath = '') {
   }
   if (!fs.lstatSync(inputDir).isDirectory()) {
     throw new Error(
-        `Expected input path (${inputDir}) to be a directory, ` + 
+        `Expected input path (${inputDir}) to be a directory, ` +
         `but it is a file.`);
   }
 
@@ -119,24 +117,80 @@ async function runNestedDirectory(inputDir, outputRoot, outputRelPath = '') {
       const outputDir = path.join(outputRoot, outputRelPath);
       if (fs.existsSync(outputDir) && fs.lstatSync(outputDir).isFile()) {
         throw new Error(
-            `Expected path to be nonexistent or a directory, ` + 
+            `Expected path to be nonexistent or a directory, ` +
             `but got a file: ${outputDir}`);
       }
       shelljs.mkdir('-p', outputDir);
-      const outputPath = path.join(outputDir, `${dirItem}.dat`);
+      const outputPath = path.join(outputDir, `${dirItem}.bin`);
       console.log(`Processing data directory: ${fullPath}`);
-      console.log(`  Writing to ${outputPath} ...`);    
+      console.log(`  Writing to ${outputPath} ...`);
       await runBaseLevelDirectory(fullPath, outputPath);
     } else {
-      await runNestedDirectory(fullPath, outputRoot, path.join(outputRelPath, dirItem));
+      await runNestedDirectory(
+          fullPath, outputRoot, path.join(outputRelPath, dirItem));
     }
   }
 }
 
-async function run() {  
-  const inputPath = process.argv[2];
-  const outputPath = process.argv[3];
-  await runNestedDirectory(inputPath, outputPath);
+async function convertWavToDat(wavPath, datPath) {
+  if (datPath == null) {
+    datPath = tempfile('.dat');
+  }
+  return new Promise((resolve, reject) => {
+    const conversion = childprocess.spawn('./prep_wavs.py', [wavPath, datPath]);
+    conversion.on('close', code => {
+      console.log(`close with code: ${code}`);
+      if (code === 0) {
+        resolve(datPath);
+      } else {
+        reject();
+      }
+    });
+  });
+  
+}
+
+async function run() {
+  const parser = new argparse.ArgumentParser(
+      {description: 'Speech-commands converter based on puppeteer'});
+  parser.addArgument('inputPath', {
+    type: 'string',
+    help: 'Input path. Can be a nested directory in the canonical directory ' +
+        'structure or a single .wav file. In the case of a .wav file, it must ' +
+        'be accompanied by a .labels file.'
+  });
+  parser.addArgument('outputPath', {type: 'string', help: 'Output path.'});
+  parser.addArgument('--labelsPath', {
+    type: 'string',
+    helps: 'Path to a .labels file. This flag must be used in case the ' +
+        'input path is a single .wav file.'
+  });
+  const args = parser.parseArgs();
+
+  if (fs.lstatSync(args.inputPath).isDirectory()) {
+    // Assume the directory is the canonical data format.
+    // TODO(cais): Call `python prep_wavs.py` via childprocess from here.
+    //   Simplify the user workflow by saving that manual step.
+    await runNestedDirectory(args.inputPath, args.outputPath);
+  } else if (fs.statSync(args.inputPath).isFile()) {
+    if (args.inputPath.endsWith('.wav')) {
+      // Check that an accompanying .labels file exists.
+      if (args.labelsPath == null) {
+        throw new Error(
+            '--labelsPath is not specified. It must be specified if ' +
+            'inputPath is a .wav file.');
+      }
+      // Convert the .wav file to .dat format.
+      console.log(`Converting ${args.inputPath} to .dat format...`);
+      const datPath = await convertWavToDat(args.inputPath);
+      console.log(`.dat file created at ${datPath}`);  // DEBUG
+      // TODO(cais): Clean up .dat file.
+    } else {
+      throw new Error(
+          `Unsupported extension name in input file. ` +
+          `Currently supported formats are: .wav.`);
+    }
+  }
 }
 
 run();
