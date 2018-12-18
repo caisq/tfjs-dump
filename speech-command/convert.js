@@ -15,11 +15,12 @@
  * =============================================================================
  */
 
+
 const fileInput = document.getElementById('fileInput');
 // TODO(cais): Remove.
 // const convertButton = document.getElementById('convert');
 
-const MAX_RECORDING_LENGTH_SEC = 1.1;
+const MAX_RECORDING_LENGTH_SEC = 1.1;  // TODO(cais): Allow longer.
 
 const OfflineAudioContextConstructor =
     window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -27,10 +28,12 @@ const OfflineAudioContextConstructor =
 let outputArrays = null;
 let recordingCounter;
 let numRecordings;
+let frameSize;
+let numFrames;
 
 function collectConversionResults() {
   return {
-    data: Array.from(outputArrays[0]),
+    data: Array.from(outputArrays[0].slice(0, numFrames * frameSize)),
     numRecordings,
     logText
   };
@@ -46,30 +49,12 @@ function logStatus(text) {
 }
 
 async function startNewRecording() {
+
   return new Promise((resolve, reject) => {
-    logStatus('In startNewRecording');  // DEBUG
     const samplingFrequencyHz = 44100;
     const nFFTIn = 1024;
-    const nFFTOut = 232;  // TODO(cais): DO NOT HARDCODE. DO NOT SUBMIT.
-    // logStatus(
-    //     `samplingFrequencyHz = ${samplingFrequencyHz}; ` +
-    //     `nFFTIn = ${nFFTIn}; nFFTOut = ${nFFTOut}`);
-    // if (recordingCounter === 0) {
-    //   console.log(`samplingFrequencyHz = ${samplingFrequencyHz}`);
-    //   console.log(`nFFTIn = ${nFFTIn}`);
-    //   console.log(`nFFTOut = ${nFFTOut}`);
-    // }
-
-    // if (numRecordings > 0 && recordingCounter >= numRecordings) {
-    //   datProgress.textContent = 'Rendering spectrograms...';
-    //   setTimeout(() => {
-    //     plotSpectrogramsForOutputArrays(outputArrays, nFFTOut);
-    //     datProgress.textContent =
-    //         'Select recordings to discard, scroll to the bottom and click
-    //         download.';
-    //   }, 20);
-    //   return;
-    // }
+    const nFFTOut = 232;  // TODO(cais): DO NOT HARDCODE.
+    frameSize = nFFTOut;
 
     let offlineAudioContext;
     try {
@@ -83,7 +68,7 @@ async function startNewRecording() {
     const reader = new FileReader();
     reader.onloadend = async () => {
       const dat = new Float32Array(reader.result);
-      logStatus(`dat.length = ${dat.length}`);  // DEBUG
+      logStatus(`dat.length = ${dat.length}`);
       const source = offlineAudioContext.createBufferSource();
       logStatus(`source = ${source}`);
       source.buffer = createBufferWithValuesAndOutputArray(
@@ -110,19 +95,13 @@ async function startNewRecording() {
       }
       setTimeout(detectFreeze, MAX_RECORDING_LENGTH_SEC * 1e3);
 
-      // let recordingConversionSucceeded = false;
       let frameCounter = 0;
       const frameDuration = nFFTIn / samplingFrequencyHz;
       logStatus(`frameDuration = ${frameDuration}`);
-      logStatus(`offlineAudioContext.suspend = ${offlineAudioContext.suspend}`);  // DEBUG
       offlineAudioContext.suspend(frameDuration).then(async () => {
-        logStatus('In suspend callback');  // DEBUG
         analyser.getFloatFrequencyData(freqData);
+        // TODO(cais): Get rid of outputArrays.
         const outputArray = outputArrays[outputArrays.length - 1];
-        // logStatus(
-        //     `frameCounter = ${frameCounter}; ` +
-        //     `freqData.length = ${freqData.length}; ` +
-        //     `freqData[0] = ${freqData[0]}`);  // DEBUG
         outputArray.set(freqData.subarray(0, nFFTOut), frameCounter * nFFTOut);
 
         while (true) {
@@ -145,27 +124,12 @@ async function startNewRecording() {
           }
           // TODO(cais): Simplify.
           const outputArray = outputArrays[outputArrays.length - 1];
-          // logStatus(
-          //     `frameCounter = ${frameCounter}; ` +
-          //     `freqData.length = ${freqData.length}; ` +
-          //     `freqData[0] = ${freqData[0]}`);  // DEBUG
           outputArray.set(
               freqData.subarray(0, nFFTOut), frameCounter * nFFTOut);
         }
 
-        // if (detectFreezeTask != null) {
-        //   clearTimeout(detectFreezeTask);
-        // }
+        numFrames = frameCounter - 1;
         resolve();
-        // if (recordingConversionSucceeded) {
-        //   recordingCounter++;
-        //   datProgress.textContent = `Converting #${recordingCounter}`;
-        //   setTimeout(startNewRecording, 1);
-        // } else {
-        //   outputArrays.pop();
-        //   source.stop();
-        //   setTimeout(startNewRecording, 1);
-        // }
       });
 
       logStatus(`Calling startRendering: ${offlineAudioContext.startRendering}`);
@@ -179,11 +143,7 @@ async function startNewRecording() {
   });
 }
 
-// convertButton.addEventListener('click', async event => {
 async function doConversion() {
-  // logStatus('In convertButton callback');
-  // logStatus(fileInput.files);  // DEBUG
-  // logStatus(fileInput.files.length);  // DEBUG
   if (fileInput.files.length > 0) {
     outputArrays = [];
     numRecordings = fileInput.files.length;
@@ -195,4 +155,3 @@ async function doConversion() {
     logStatus('ERROR: Select one or more files first.');
   }
 }
-// });
