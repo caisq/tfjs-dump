@@ -26,7 +26,71 @@ const tempfile = require('tempfile');
 const pup = require('puppeteer');
 const speechCommands = require('@tensorflow-models/speech-commands');
 
-async function runBaseLevelDirectory(inputPath, outputPath) {
+/**
+ * Run a single .dat file through the browser WebAudio conversion using
+ * puppeteer.
+ *
+ * @param {string} inputFilePath The path to the .dat file object to upload.
+ * @param {number} sampleFreqHz Sampling frequency of the .data file, in Hz.
+ * @param {*} page The puppeteer page object to run the WebAudio conversion
+ *   in.
+ * @return Result of conversion.
+ */
+async function runFile(inputFilePath, sampleFreqHz, page) {
+  let browser;
+  if (page == null) {
+    browser = await pup.launch();
+    page = await browser.newPage();
+  }
+  console.log(`inputFilePath = ${inputFilePath}, sampleFreqHz = ${
+      sampleFreqHz}`);  // DEBUG
+  const lengthSec = getDatFileLengthSec(inputFilePath, sampleFreqHz);
+  console.log(`lengthSec = ${lengthSec}`);  // DEBUG
+
+  let result;
+  while (true) {
+    while (true) {
+      try {
+        await page.goto(`file://${__dirname}/puppeteer-convert.html`);
+        const fileInput = await page.$('#fileInput');
+        await fileInput.uploadFile(inputFilePath);
+        const param = {sampleFreqHz, lengthSec: 4.0};  // DEBUG TODO(cais): Remove "5.1".
+        // await page.evaluate((param) => setParam(param), param);
+        await page.evaluate((param) => doConversion(param), param);
+        
+        // await page.evaluate(() => doConversion());
+        break;
+      } catch (err) {
+        // Detected freezing in the conversion process (should be rare).
+        // Repeated retrying should resolve it.
+
+        // console.error(err);
+        // // DEBUG
+        // const result = await page.evaluate(() => collectConversionResults());
+        // console.log(result.logText);  // DEBUG
+        // break;   // TODO(cais): Remove. DEBUG.      
+      }
+    }
+
+    result = await page.evaluate(() => collectConversionResults());
+    if (result.completed) {
+      // TODO(cais): Implement resumption.
+      break;
+    }
+  }
+  console.log('=========== LOG BEGINS =============');  // DEBUG
+  console.log(result.logText);  // DEBUG
+  console.log('=========== LOG ENDS =============');  // DEBUG
+  if (browser != null) {
+    browser.close();
+  }
+  return result;
+}
+
+/**
+ * TODO(cais): Doc string.
+ */
+async function runBaseLevelDirectory(inputPath, outputPath, sampleFreqHz) {
   console.log(`runBaseLevelDirectory: ${inputPath}`);  // DEBUG
   // TODO(cais): Extract the label from the inputPath directly.
 
@@ -57,26 +121,14 @@ async function runBaseLevelDirectory(inputPath, outputPath) {
   const dataset = new speechCommands.Dataset();
 
   for (const fileToUpload of filesToUpload) {
-    while (true) {
-      try {
-        await page.goto(`file://${__dirname}/puppeteer-convert.html`);
-        const fileInput = await page.$('#fileInput');
-        await fileInput.uploadFile(fileToUpload);
-        await page.evaluate(() => doConversion());
-        break;
-      } catch (err) {
-        // Detected freezing in the conversion process (should be rare).
-        // Repeated retrying should resolve it.
-      }
-    }
-    const results = await page.evaluate(() => collectConversionResults());
+    const result = await runFile(fileToUpload, sampleFreqHz, page);
+    console.log(result)
     const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
     const example = {
       label: '_dummy_label_',
-      spectrogram: {data: new Float32Array(results.data), frameSize}
-    }
-
-                    dataset.addExample(example);
+      spectrogram: {data: new Float32Array(result.data), frameSize}
+    };
+    dataset.addExample(example);
     console.log(
         `Added example with label "${example.label}": ` +
         `dataset.size() = ${dataset.size()}`);  // DEBUG
@@ -99,7 +151,19 @@ function isBaseLevelDirectory(dirPath) {
   return true;
 }
 
-async function runNestedDirectory(inputDir, outputRoot, outputRelPath = '') {
+/**
+ * Calculate the length of a .dat file.
+ * @param {string} datFilePath Path to .dat file.
+ * @param {number} sampleFreqHz Sampling frequency in Hz.
+ * @returns {number} Legnth of the .dat file in s.
+ */
+function getDatFileLengthSec(datFilePath, sampleFreqHz) {
+  const BYTES_PER_SAPMLE = 4;
+  return fs.lstatSync(datFilePath).size / BYTES_PER_SAPMLE / sampleFreqHz;
+}
+
+async function runNestedDirectory(
+    inputDir, outputRoot, sampleFreqHz, outputRelPath = '') {
   if (!fs.existsSync(inputDir)) {
     throw new Error(`Nonexistent input path: ${inputDir}`);
   }
@@ -124,10 +188,11 @@ async function runNestedDirectory(inputDir, outputRoot, outputRelPath = '') {
       const outputPath = path.join(outputDir, `${dirItem}.bin`);
       console.log(`Processing data directory: ${fullPath}`);
       console.log(`  Writing to ${outputPath} ...`);
-      await runBaseLevelDirectory(fullPath, outputPath);
+      await runBaseLevelDirectory(fullPath, outputPath, sampleFreqHz);
     } else {
       await runNestedDirectory(
-          fullPath, outputRoot, path.join(outputRelPath, dirItem));
+          fullPath, outputRoot, sampleFreqHz,
+          path.join(outputRelPath, dirItem));
     }
   }
 }
@@ -147,7 +212,32 @@ async function convertWavToDat(wavPath, datPath) {
       }
     });
   });
-  
+}
+
+//** */
+async function runWavWithLabels(wavPath,
+                                labelsPath,
+                                targetSampleFreqHz,
+                                outputPath) {
+  // Convert the .wav file to .dat format.
+  console.log(`Converting ${wavPath} to .dat format...`);
+  const datPath = await convertWavToDat(wavPath);
+  console.log(`.dat file created at ${datPath}`);
+  // TODO(cais): Clean up .dat file.
+
+  const result = await runFile(datPath, targetSampleFreqHz);
+  console.log(result.data.length);  // DEBUG
+
+  const dataset = new speechCommands.Dataset();
+  const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
+  const example = {
+    label: '_dummy_label_',
+    spectrogram: {data: new Float32Array(result.data), frameSize}
+  };
+  dataset.addExample(example);
+
+  console.log(`outputPath = ${outputPath}`);  // DEBUG
+  fs.writeFileSync(outputPath, new Buffer(dataset.serialize()));
 }
 
 async function run() {
@@ -162,16 +252,23 @@ async function run() {
   parser.addArgument('outputPath', {type: 'string', help: 'Output path.'});
   parser.addArgument('--labelsPath', {
     type: 'string',
-    helps: 'Path to a .labels file. This flag must be used in case the ' +
+    help: 'Path to a .labels file. This flag must be used in case the ' +
         'input path is a single .wav file.'
   });
+  parser.addArgument('--targetSampleFreqHz', {
+    type: 'int',
+    defaultValue: 44100,
+    help: 'Target sampling frequency in Hz'
+  });
+  // TODO(cais): Add option for sampling frequency.
   const args = parser.parseArgs();
 
   if (fs.lstatSync(args.inputPath).isDirectory()) {
     // Assume the directory is the canonical data format.
     // TODO(cais): Call `python prep_wavs.py` via childprocess from here.
     //   Simplify the user workflow by saving that manual step.
-    await runNestedDirectory(args.inputPath, args.outputPath);
+    await runNestedDirectory(
+        args.inputPath, args.outputPath, args.targetSampleFreqHz);
   } else if (fs.statSync(args.inputPath).isFile()) {
     if (args.inputPath.endsWith('.wav')) {
       // Check that an accompanying .labels file exists.
@@ -180,11 +277,10 @@ async function run() {
             '--labelsPath is not specified. It must be specified if ' +
             'inputPath is a .wav file.');
       }
-      // Convert the .wav file to .dat format.
-      console.log(`Converting ${args.inputPath} to .dat format...`);
-      const datPath = await convertWavToDat(args.inputPath);
-      console.log(`.dat file created at ${datPath}`);  // DEBUG
-      // TODO(cais): Clean up .dat file.
+      
+      await runWavWithLabels(
+          args.inputPath, args.labelsPath, args.targetSampleFreqHz,
+          args.outputPath);
     } else {
       throw new Error(
           `Unsupported extension name in input file. ` +

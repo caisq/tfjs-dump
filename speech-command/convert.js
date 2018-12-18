@@ -20,7 +20,7 @@ const fileInput = document.getElementById('fileInput');
 // TODO(cais): Remove.
 // const convertButton = document.getElementById('convert');
 
-const MAX_RECORDING_LENGTH_SEC = 1.1;  // TODO(cais): Allow longer.
+// const MAX_RECORDING_LENGTH_SEC = 1.1;  // TODO(cais): Allow longer.
 
 const OfflineAudioContextConstructor =
     window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -31,13 +31,22 @@ let numRecordings;
 let frameSize;
 let numFrames;
 
+let parameters;
+let completed;
 function collectConversionResults() {
   return {
-    data: Array.from(outputArrays[0].slice(0, numFrames * frameSize)),
+    data: outputArrays[0] == null ?  null : Array.from(outputArrays[0].slice(0, numFrames * frameSize)),
     numRecordings,
-    logText
+    completed,
+    logText,
   };
 }
+
+// let param;
+// function setParam(tParam) {
+//   logStatus('In setParam():', JSON.stringify(tParam));
+//   param = tParam;
+// }
 
 function queryRecordingCounter() {
   return recordingCounter;
@@ -48,10 +57,13 @@ function logStatus(text) {
   logText += text + '\n';
 }
 
-async function startNewRecording() {
+async function startNewRecording(sampleFreqHz, lengthSec) {
+  logStatus(
+      `startNewRecording(): ` +
+      `sampleFreqHz = ${sampleFreqHz}, lengthSec = ${lengthSec}`);
 
   return new Promise((resolve, reject) => {
-    const samplingFrequencyHz = 44100;
+    // const sampleFreqHz = 44100;  // TODO(cais): Remove.
     const nFFTIn = 1024;
     const nFFTOut = 232;  // TODO(cais): DO NOT HARDCODE.
     frameSize = nFFTOut;
@@ -59,8 +71,7 @@ async function startNewRecording() {
     let offlineAudioContext;
     try {
       offlineAudioContext = new OfflineAudioContextConstructor(
-          1, samplingFrequencyHz * MAX_RECORDING_LENGTH_SEC * 2,
-          samplingFrequencyHz);
+          1, Math.floor(sampleFreqHz * lengthSec * 2), sampleFreqHz);
     } catch (error) {
       logStatus(
           `Failed to create OfflineAudioContextConstructor: ${error.message}`);
@@ -93,12 +104,12 @@ async function startNewRecording() {
       function detectFreeze() {
         reject(new Error('Frozen'));
       }
-      setTimeout(detectFreeze, MAX_RECORDING_LENGTH_SEC * 1e3);
+      setTimeout(detectFreeze, Math.round(lengthSec * 1e3));
 
       let frameCounter = 0;
-      const frameDuration = nFFTIn / samplingFrequencyHz;
-      logStatus(`frameDuration = ${frameDuration}`);
-      offlineAudioContext.suspend(frameDuration).then(async () => {
+      const frameDurationSec = nFFTIn / sampleFreqHz;
+      logStatus(`frameDuration = ${frameDurationSec}`);
+      offlineAudioContext.suspend(frameDurationSec).then(async () => {
         analyser.getFloatFrequencyData(freqData);
         // TODO(cais): Get rid of outputArrays.
         const outputArray = outputArrays[outputArrays.length - 1];
@@ -106,12 +117,20 @@ async function startNewRecording() {
 
         while (true) {
           frameCounter++;
+          const suspendTimeSec = (frameCounter + 1) * frameDurationSec;
+          if (frameCounter * frameDurationSec > lengthSec) {
+            completed = true;
+            logStatus('Completed');
+            break;
+          }
+
           offlineAudioContext.resume();
           try {
-            await offlineAudioContext.suspend(
-                (frameCounter + 1) * frameDuration);
+            // logStatus(`Scheduling suspend() at ${suspendTimeSec}`);  // DEBUG
+            await offlineAudioContext.suspend(suspendTimeSec);
           } catch (err) {
             // suspend() call failed. Retry file.
+            logStatus('!!suspend() call failed: ' + err.message);  // DEBUG
             break;
           }
 
@@ -119,7 +138,7 @@ async function startNewRecording() {
           if (freqData[0] === -Infinity && freqData[1] === -Infinity) {
             // recordingConversionSucceeded = true;
             recordingCounter++;
-            logStatus('Success!');
+            logStatus('Breaking on -Infinity');  // DEBUG
             break;
           }
           // TODO(cais): Simplify.
@@ -129,6 +148,7 @@ async function startNewRecording() {
         }
 
         numFrames = frameCounter - 1;
+        logStatus(`Calling resolve(): numFrames = ${numFrames}`);  // DEBUG
         resolve();
       });
 
@@ -143,13 +163,14 @@ async function startNewRecording() {
   });
 }
 
-async function doConversion() {
+async function doConversion(param) {
+  parameters = param;
   if (fileInput.files.length > 0) {
     outputArrays = [];
     numRecordings = fileInput.files.length;
     recordingCounter = 0;
     logStatus(`Calling startNewRecording: numRecordings = ${numRecordings}`);
-    await startNewRecording();
+    await startNewRecording(param.sampleFreqHz, param.lengthSec);
     logStatus(`Done startNewRecording()`);
   } else {
     logStatus('ERROR: Select one or more files first.');
