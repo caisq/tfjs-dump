@@ -289,32 +289,38 @@ async function runWavWithLabels(wavPath,
   const dataset = new speechCommands.Dataset();
   const frameDurationSec = nFFTIn / targetSampleFreqHz;
   for (const event of events) {
-    const frame0 = Math.floor(event.tBeginSec / frameDurationSec);
-    let frame1 = Math.floor(event.tEndSec / frameDurationSec);
-    if (frame1 - frame0 < requiredNumFrames) {
-      frame1 = frame0 + requiredNumFrames;
-      // TODO(cais): Add logic for temporal jitter.
-    } else if (frame1 - frame0 > requiredNumFrames) {
-      throw new Error('Not Implemented yet')
-    }
-    const i0 = frame0 * frameSize;
-    const i1 = frame1 * frameSize;
-
-    if (i1 >= data.length) {
-      console.warn(`WARNING: Skipping and event of label ${event.label}`);
-      continue;
-    }
-    console.log(
-      `Label ${event.label}: [${event.tBeginSec}, ${event.tEndSec}] ` +
-      `--> [${i0}, ${i1}]`);
-    const example = {
-      label: event.label,
-      spectrogram: {
-        data: new Float32Array(data.slice(i0, i1)),
-        frameSize
+    const origFrame0 = Math.floor(event.tBeginSec / frameDurationSec);
+    for (const jitter of [-0.25, 0.25]) {
+      console.log(`jitter = ${jitter}`);  // DEBUG
+      const frame0 = origFrame0 + Math.round(requiredNumFrames * jitter);
+      let frame1 = frame0 + requiredNumFrames;
+      // TODO(cais): Better logic for jitter.
+      // if (frame1 - frame0 < requiredNumFrames) {
+      //   frame1 = frame0 + requiredNumFrames;
+      //   // TODO(cais): Add logic for temporal jitter.
+      // } else if (frame1 - frame0 > requiredNumFrames) {
+      //   throw new Error('Not Implemented yet')
+      // }
+      const i0 = frame0 * frameSize;
+      const i1 = frame1 * frameSize;
+  
+      if (i0 < 0 || i1 >= data.length) {
+        console.warn(`WARNING: Skipping and event of label ${event.label}`);
+        continue;
       }
-    };
-    dataset.addExample(example);
+      console.log(
+        `Label ${event.label}: [${event.tBeginSec}, ${event.tEndSec}] ` +
+        `--> [${i0}, ${i1}]`);
+      const example = {
+        label: event.label,
+        spectrogram: {
+          data: new Float32Array(data.slice(i0, i1)),
+          frameSize
+        }
+      };
+      dataset.addExample(example);
+    }
+    
   }
 
   // Extract the _background_noise_ examples.
