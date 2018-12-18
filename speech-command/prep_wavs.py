@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Copyright 2018 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +14,9 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# from __future__ import absolute_import
+# from __future__ import division
+# from __future__ import print_function
 
 import argparse
 import glob
@@ -192,11 +193,17 @@ def convert(in_wav_path,
     Length (in # of samples) of the waveform in the file at
       `out_data_path`.
   '''
+  print('convert(): out_data_path = %s' % out_data_path)  # DEBUG
   waveform = load_and_normalize_waveform(in_wav_path,
                                          target_fs,
                                          frame_size)
   out_waveforms = []
-  if match_len is not None:
+  print('match_len = %s' % match_len)  # DEBUG
+  if match_len is None:
+    # Extract the entire waveform from the single .wav file.
+    out_waveforms.append(waveform)
+  else:
+    print(len(waveform))  # DEBUG
     if len(waveform) > match_len:
       if not multi_splits:
         out_waveforms.append(waveform[:match_len])
@@ -234,11 +241,13 @@ def convert(in_wav_path,
 
   out_file_paths = []
   if len(out_waveforms) == 1:
+    print('out_waveforms len == 1')  # DEBUG
     out_file_paths.append(out_data_path)
   else:
     file_name, ext_name = os.path.splitext(out_data_path)
     for i in range(len(out_waveforms)):
       out_file_paths.append('%s_split%d%s' % (file_name, i, ext_name))
+  print('out_file_paths = %s' % out_file_paths)  # DEBUG
 
   for out_path, out_waveform in zip(out_file_paths, out_waveforms):
     with open(out_path, 'wb') as out_file:
@@ -424,6 +433,15 @@ def main():
           do_filling=(not FLAGS.no_filling))
       nums_train_examples.append(num_train_examples)
       nums_test_examples.append(num_test_examples)
+  elif os.path.isfile(FLAGS.input_wav_path):
+    convert(FLAGS.input_wav_path,
+            FLAGS.target_fs,
+            FLAGS.frame_size,
+            FLAGS.output_data_path)
+    print('Processed input wav file')  # DEBUG
+  else:
+    raise ValueError('Nonexistent input path %s' % FLAGS.input_wav_path)
+
 
   if FLAGS.include_noise:
     # Generate noise examples.
