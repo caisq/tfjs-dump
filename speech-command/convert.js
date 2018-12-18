@@ -66,6 +66,7 @@ function logStatus(text) {
 }
 
 async function startNewRecording(sampleFreqHz,
+                                 totalLengthSec,
                                  lengthSec,
                                  initFrameCount) {
   if (initFrameCount == null) {
@@ -84,7 +85,7 @@ async function startNewRecording(sampleFreqHz,
     let offlineAudioContext;
     try {
       offlineAudioContext = new OfflineAudioContextConstructor(
-          1, Math.floor(sampleFreqHz * lengthSec * 2), sampleFreqHz);
+          1, Math.floor(sampleFreqHz * totalLengthSec * 2), sampleFreqHz);
     } catch (error) {
       logStatus(
           `Failed to create OfflineAudioContextConstructor: ${error.message}`);
@@ -117,7 +118,7 @@ async function startNewRecording(sampleFreqHz,
       function detectFreeze() {
         reject(new Error('Frozen'));
       }
-      const PROCESSING_SCALE_FACTOR = 0.01;
+      const PROCESSING_SCALE_FACTOR = 0.1;
       setTimeout(
           detectFreeze,
           Math.round(lengthSec * PROCESSING_SCALE_FACTOR * 1e3));
@@ -132,7 +133,7 @@ async function startNewRecording(sampleFreqHz,
         outputArray.set(freqData.subarray(0, nFFTOut), frameCounter * nFFTOut);
 
         while (true) {
-          if (frameCounter * frameDurationSec > lengthSec) {
+          if ((frameCounter - initFrameCount) * frameDurationSec > lengthSec) {
             completed = true;
             break;
           }
@@ -189,7 +190,8 @@ async function doConversion(param) {
     recordingCounter = 0;
     logStatus(`Calling startNewRecording: numRecordings = ${numRecordings}`);
     await startNewRecording(
-        param.sampleFreqHz, param.lengthSec, param.initFrameCount);
+        param.sampleFreqHz, param.totalLengthSec, param.lengthSec,
+        param.initFrameCount);
     logStatus(`Done startNewRecording()`);
   } else {
     logStatus('ERROR: Select one or more files first.');

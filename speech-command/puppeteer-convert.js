@@ -34,28 +34,40 @@ const speechCommands = require('@tensorflow-models/speech-commands');
  * @param {number} sampleFreqHz Sampling frequency of the .data file, in Hz.
  * @param {*} page The puppeteer page object to run the WebAudio conversion
  *   in.
+ * @param {number} tBeginSec Optional beginning time, in seconds.
+ * @param {number} tEndSec Optional ending time, in seconds.
  * @return Result of conversion.
  */
 async function runFile(inputFilePath,
                        sampleFreqHz,
-                       page) {
+                       nFFTIn,
+                       page,
+                       tBeginSec,
+                       tEndSec) {
   let browser;
   if (page == null) {
     browser = await pup.launch();
     page = await browser.newPage();
   }
-  console.log(`inputFilePath = ${inputFilePath}, sampleFreqHz = ${
-      sampleFreqHz}`);  // DEBUG
-  const lengthSec = getDatFileLengthSec(inputFilePath, sampleFreqHz);
-  console.log(`lengthSec = ${lengthSec}`);  // DEBUG
+  const totalLengthSec = getDatFileLengthSec(inputFilePath, sampleFreqHz);
+  // console.log(`datLengthSec = ${totalLengthSec}`);  // DEBUG
+
+  if (tBeginSec == null) {
+    tBeginSec = 0;
+  }
+  if (tEndSec == null) {
+    tEndSec = totalLengthSec;
+  }
 
   let data = [];
   let result;
   const frameSize = 232;  // TODO(cais): DO NOT HARD CODE.
+  const frameDurationSec = nFFTIn / sampleFreqHz;
   const param = {
     sampleFreqHz,
-    lengthSec: 120,  // TODO(cais): DO NOT HARD CODE.
-    initFrameCount: 0
+    totalLengthSec,
+    lengthSec: tEndSec - tBeginSec,  // TODO(cais): Use finalLength
+    initFrameCount: Math.round(tBeginSec / frameDurationSec)
   };  // DEBUG TODO(cais): Remove hard coded lengthSec.
   while (true) {
     while (true) {
@@ -85,11 +97,12 @@ async function runFile(inputFilePath,
       data = data.concat(result.data);
     }
     if (result.completed) {
-      // TODO(cais): Implement resumption.
+      // TODO(cais): Implement resumption. Deal with incomplete.
       // console.log(`Complete: frameCounter = ${result.frameCounter}`);  // DEBUG
       // console.log(`          ${result.data.length / frameSize}`);
       break;
     } else {
+      // TODO(cais)
       console.log(`*** Incomplete: Resuming from ${result.frameCounter}`);
       // console.log(`    data.length = ${data.length}`);
       param.initFrameCount = result.frameCounter;
@@ -102,7 +115,7 @@ async function runFile(inputFilePath,
     browser.close();
   }
   // TODO(cais): It varies a little! Fix it.
-  console.log(`Final length: ${data.length / frameSize} frames`);
+  // console.log(`Final length: ${data.length / frameSize} frames`);
   return data;
 }
 
@@ -140,8 +153,9 @@ async function runBaseLevelDirectory(inputPath, outputPath, sampleFreqHz) {
   const dataset = new speechCommands.Dataset();
 
   for (const fileToUpload of filesToUpload) {
-    const data = await runFile(fileToUpload, sampleFreqHz, page);
+    const nFFTIn = 1024;  // TODO(cais): DO NOT HARDCODE.
     const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
+    const data = await runFile(fileToUpload, sampleFreqHz, nFFTIn, page);
     const example = {
       label: '_dummy_label_',
       spectrogram: {data: new Float32Array(data), frameSize}
@@ -278,22 +292,36 @@ async function runWavWithLabels(wavPath,
   console.log(`Converting ${wavPath} to .dat format...`);
   const datPath = await convertWavToDat(wavPath);
   console.log(`.dat file created at ${datPath}`);
-  
 
-  const data = await runFile(datPath, targetSampleFreqHz);
   const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
-  console.log('data.length =', data.length);  // DEBUG
-  console.log('data #frames =', data.length / frameSize);  // DEBUG
-  const requiredNumFrames = 43; // TODO(cais): DO NOT HARDCODE.
+  const numRequiredFrames = 43; // TODO(cais): DO NOT HARDCODE.
 
   const dataset = new speechCommands.Dataset();
   const frameDurationSec = nFFTIn / targetSampleFreqHz;
+  let eventCount = 0;
   for (const event of events) {
-    const origFrame0 = Math.floor(event.tBeginSec / frameDurationSec);
-    for (const jitter of [-0.25, 0.25]) {
-      console.log(`jitter = ${jitter}`);  // DEBUG
-      const frame0 = origFrame0 + Math.round(requiredNumFrames * jitter);
-      let frame1 = frame0 + requiredNumFrames;
+    // const origFrame0 = Math.floor(event.tBeginSec / frameDurationSec);
+    // const origFrame1 = Math.floor(event.tEndSec / frameDurationSec);
+    // if (origFrame1 === origFrame0) {
+    //   continue;
+    // }
+    for (const jitter of [-0.2, -0.1, 0, 0.1, 0.2]) {
+      
+      const t0 = event.tBeginSec + (event.tEndSec - event.tBeginSec) * jitter;
+      const t1 = t0 + frameDurationSec * numRequiredFrames;
+      console.log(
+          `Label ${event.label}: jitter=${jitter}: ` +
+          `t0=${t0.toFixed(3)}; t1=${t1.toFixed(3)}`);  // DEBUG
+      // const frame0 =
+      //     origFrame0 + Math.round((origFrame1 - origFrame0) * jitter);
+      // let frame1 = frame0 + requiredNumFrames;
+
+      const data =
+          await runFile(datPath, targetSampleFreqHz, nFFTIn, null, t0, t1);
+      console.log(
+          `data.length=${data.length}; ` +
+          `data #frames = ${data.length / frameSize}`);  // DEBUG
+      
       // TODO(cais): Better logic for jitter.
       // if (frame1 - frame0 < requiredNumFrames) {
       //   frame1 = frame0 + requiredNumFrames;
@@ -301,70 +329,72 @@ async function runWavWithLabels(wavPath,
       // } else if (frame1 - frame0 > requiredNumFrames) {
       //   throw new Error('Not Implemented yet')
       // }
-      const i0 = frame0 * frameSize;
-      const i1 = frame1 * frameSize;
+      // const i0 = frame0 * frameSize;
+      // const i1 = frame1 * frameSize;
   
-      if (i0 < 0 || i1 >= data.length) {
-        console.warn(`WARNING: Skipping and event of label ${event.label}`);
-        continue;
-      }
-      console.log(
-        `Label ${event.label}: [${event.tBeginSec}, ${event.tEndSec}] ` +
-        `--> [${i0}, ${i1}]`);
+      // if (i0 < 0 || i1 >= data.length) {
+      //   console.warn(`WARNING: Skipping and event of label ${event.label}`);
+      //   continue;
+      // }
+      // console.log(
+      //   `Label ${event.label}: [${event.tBeginSec}, ${event.tEndSec}] ` +
+      //   `--> [${i0}, ${i1}]`);
       const example = {
         label: event.label,
         spectrogram: {
-          data: new Float32Array(data.slice(i0, i1)),
+          data: new Float32Array(data.slice(0, numRequiredFrames * frameSize)),  // TODO(cais): Fix.
           frameSize
         }
       };
       dataset.addExample(example);
     }
-    
+    eventCount++;
+    // if (eventCount === 2) {
+    //   break;  // DEBUG  
+    // } 
   }
 
-  // Extract the _background_noise_ examples.
-  const noiseStrideSec = 1.0;
-  const noiseStrideFrames = Math.round(noiseStrideSec / frameDurationSec);
-  console.log(`noiseStrideFrames = ${noiseStrideFrames}`);  // DEBUG
-  let frame0 = 0;
-  while (true) {
-    const frame1 = frame0 + requiredNumFrames;
-    const t0 = frame0 * frameDurationSec;
-    const t1 = frame1 * frameDurationSec;
-    const i0 = frame0 * frameSize;
-    const i1 = frame1 * frameSize;
-    if (i1 >= data.length) {
-      break;
-    }
-    // Determine if there is any overlap between the window and the events.
-    let overlap = false;
-    for (const event of events) {
-      if (!(t1 < event.tBeginSec || t0 >= event.tEndSec)) {
-        overlap = true;
-        console.log('Skipping an overlap:', t0, t1);  // DEBUG
-        frame0 = frame1;
-        break;
-      }
-    }
-    if (overlap) {
-      continue;
-    }
-    const example = {
-      label: '_background_noise_',  // TODO(cais): Do not hardcode.
-      spectrogram: {
-        data: new Float32Array(data.slice(i0, i1)),
-        frameSize
-      }
-    };
-    dataset.addExample(example);
-    frame0 = frame1;
-  }
+  // TODO(cais): Restore.
+  // // Extract the _background_noise_ examples.
+  // const noiseStrideSec = 0.5;
+  // const noiseStrideFrames = Math.round(noiseStrideSec / frameDurationSec);
+  // console.log(`noiseStrideFrames = ${noiseStrideFrames}`);  // DEBUG
+  // let frame0 = 0;
+  // while (true) {
+  //   const frame1 = frame0 + requiredNumFrames;
+  //   const t0 = frame0 * frameDurationSec;
+  //   const t1 = frame1 * frameDurationSec;
+  //   const i0 = frame0 * frameSize;
+  //   const i1 = frame1 * frameSize;
+  //   if (i1 >= data.length) {
+  //     break;
+  //   }
+  //   // Determine if there is any overlap between the window and the events.
+  //   let overlap = false;
+  //   for (const event of events) {
+  //     if (!(t1 < event.tBeginSec || t0 >= event.tEndSec)) {
+  //       overlap = true;
+  //       console.log('Skipping an overlap:', t0, t1);  // DEBUG
+  //       frame0 = frame1;
+  //       break;
+  //     }
+  //   }
+  //   if (overlap) {
+  //     continue;
+  //   }
+  //   const example = {
+  //     label: '_background_noise_',  // TODO(cais): Do not hardcode.
+  //     spectrogram: {
+  //       data: new Float32Array(data.slice(i0, i1)),
+  //       frameSize
+  //     }
+  //   };
+  //   dataset.addExample(example);
+  //   frame0 += noiseStrideFrames;
+  // }
 
   console.log(`outputPath = ${outputPath}`);  // DEBUG
   fs.writeFileSync(outputPath, new Buffer(dataset.serialize()));
-
-
 
   // Clean up the temporary .dat file.
   fs.unlinkSync(datPath);
