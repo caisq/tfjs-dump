@@ -61,13 +61,14 @@ async function runFile(inputFilePath,
 
   let data = [];
   let result;
-  const frameSize = 232;  // TODO(cais): DO NOT HARD CODE.
+  // const frameSize = 232;  // TODO(cais): DO NOT HARD CODE.
   const frameDurationSec = nFFTIn / sampleFreqHz;
   const param = {
     sampleFreqHz,
     totalLengthSec,
-    lengthSec: tEndSec - tBeginSec,  // TODO(cais): Use finalLength
-    initFrameCount: Math.round(tBeginSec / frameDurationSec)
+    // lengthSec: tEndSec - tBeginSec,  // TODO(cais): Use finalLength
+    initFrameCount: Math.round(tBeginSec / frameDurationSec),
+    lastFrameCount: Math.round(tEndSec / frameDurationSec)
   };  // DEBUG TODO(cais): Remove hard coded lengthSec.
   while (true) {
     while (true) {
@@ -83,7 +84,6 @@ async function runFile(inputFilePath,
       } catch (err) {
         // Detected freezing in the conversion process (should be rare).
         // Repeated retrying should resolve it.
-
         // console.error(err);
         // // DEBUG
         // const result = await page.evaluate(() => collectConversionResults());
@@ -93,6 +93,7 @@ async function runFile(inputFilePath,
     }
 
     result = await page.evaluate(() => collectConversionResults());
+    // console.log(result.logText);  // DEBUG
     if (result.data != null && result.data.length > 0) {
       data = data.concat(result.data);
     }
@@ -103,9 +104,13 @@ async function runFile(inputFilePath,
       break;
     } else {
       // TODO(cais)
-      console.log(`*** Incomplete: Resuming from ${result.frameCounter}`);
+      console.log(
+          `*** Incomplete: Resuming from ${result.frameCounter} ` +
+          `(initFrameCount = ${param.initFrameCount}; ` +
+          `lastFrameCount = ${param.lastFrameCount})`);
+      // console.log(result.logText);  // DEBUG
       // console.log(`    data.length = ${data.length}`);
-      param.initFrameCount = result.frameCounter;
+      param.initFrameCount = result.frameCounter - 1;
     }
   }
   // console.log('=========== LOG BEGINS =============');  // DEBUG
@@ -230,6 +235,7 @@ async function runNestedDirectory(
 }
 
 async function convertWavToDat(wavPath, datPath) {
+  console.log('AAA');  // DEBUG
   if (datPath == null) {
     datPath = tempfile('.dat');
   }
@@ -287,6 +293,9 @@ async function runWavWithLabels(wavPath,
                                 outputPath) {
   const events = loadLabels(labelsPath);
   console.log(events);  // DEBUG
+
+  const browser = await pup.launch();
+  const page = await browser.newPage();
   
   // Convert the .wav file to .dat format.
   console.log(`Converting ${wavPath} to .dat format...`);
@@ -305,7 +314,7 @@ async function runWavWithLabels(wavPath,
     // if (origFrame1 === origFrame0) {
     //   continue;
     // }
-    for (const jitter of [-0.2, -0.1, 0, 0.1, 0.2]) {
+    for (const jitter of [-0.2, 0, 0.2]) {
       
       const t0 = event.tBeginSec + (event.tEndSec - event.tBeginSec) * jitter;
       const t1 = t0 + frameDurationSec * numRequiredFrames;
@@ -317,10 +326,11 @@ async function runWavWithLabels(wavPath,
       // let frame1 = frame0 + requiredNumFrames;
 
       const data =
-          await runFile(datPath, targetSampleFreqHz, nFFTIn, null, t0, t1);
+          await runFile(datPath, targetSampleFreqHz, nFFTIn, page, t0, t1);
+      const numActualFrames = data.length / frameSize;
       console.log(
           `data.length=${data.length}; ` +
-          `data #frames = ${data.length / frameSize}`);  // DEBUG
+          `data #frames=${numActualFrames}`);  // DEBUG
       
       // TODO(cais): Better logic for jitter.
       // if (frame1 - frame0 < requiredNumFrames) {
@@ -339,17 +349,20 @@ async function runWavWithLabels(wavPath,
       // console.log(
       //   `Label ${event.label}: [${event.tBeginSec}, ${event.tEndSec}] ` +
       //   `--> [${i0}, ${i1}]`);
-      const example = {
-        label: event.label,
-        spectrogram: {
-          data: new Float32Array(data.slice(0, numRequiredFrames * frameSize)),  // TODO(cais): Fix.
-          frameSize
-        }
-      };
-      dataset.addExample(example);
+      if (numActualFrames === numRequiredFrames) {
+        const example = {
+          label: event.label,
+          spectrogram: {
+            data: new Float32Array(data.slice(0, numRequiredFrames * frameSize)),  // TODO(cais): Fix.
+            frameSize
+          }
+        };
+        dataset.addExample(example);
+      }
     }
     eventCount++;
-    // if (eventCount === 2) {
+    console.log(`=== eventCount = ${eventCount} ===`)
+    // if (eventCount === 15) {
     //   break;  // DEBUG  
     // } 
   }
@@ -395,6 +408,8 @@ async function runWavWithLabels(wavPath,
 
   console.log(`outputPath = ${outputPath}`);  // DEBUG
   fs.writeFileSync(outputPath, new Buffer(dataset.serialize()));
+
+  browser.close();
 
   // Clean up the temporary .dat file.
   fs.unlinkSync(datPath);
