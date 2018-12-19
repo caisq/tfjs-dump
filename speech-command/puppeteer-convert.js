@@ -302,19 +302,66 @@ async function runWavWithLabels(wavPath,
   const datPath = await convertWavToDat(wavPath);
   console.log(`.dat file created at ${datPath}`);
 
+  const totalLengthSec = getDatFileLengthSec(datPath, targetSampleFreqHz);
+
   const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
   const numRequiredFrames = 43; // TODO(cais): DO NOT HARDCODE.
 
   const dataset = new speechCommands.Dataset();
   const frameDurationSec = nFFTIn / targetSampleFreqHz;
-  let eventCount = 0;
-  const window = frameDurationSec * numRequiredFrames;
+  const windowSec = frameDurationSec * numRequiredFrames;
+
+  // Extract the _background_noise_ examples.
+  console.log('\nExtracting noise examples');  // DEBUG
+  const noiseStrideSec = 0.5;
+  const safetyMarginSec = 0.1;
+  let tSec0 = 0;
+  while (true) {
+    const tSec1 = tSec0 + windowSec;
+    if (tSec1 >= totalLengthSec) {
+      break;
+    }
+    console.log(`tSec0 = ${tSec0}`);  // DEBUG
+    // Determine if there is any overlap between the window and the events.
+    let overlap = false;
+    for (const event of events) {
+      if (!(tSec1 < event.tBeginSec - safetyMarginSec ||
+            tSec0 >= event.tEndSec + safetyMarginSec)) {
+        overlap = true;
+        console.log(
+            `Skipping an overlap for noise: ` +
+            `[${tSec0.toFixed(3)}, ${tSec1.toFixed(3)}]`);  // DEBUG;
+        break;
+      }
+    }
+    if (overlap) {
+      tSec0 += noiseStrideSec;
+      continue;
+    }
+
+    const data =
+        await runFile(datPath, targetSampleFreqHz, nFFTIn, page, tSec0, tSec1);
+    const numActualFrames = data.length / frameSize;
+    if (numActualFrames === numRequiredFrames) {
+      const example = {
+        label: '_background_noise_',  // TODO(cais): Do not hardcode.
+        spectrogram: {
+          data: new Float32Array(data),
+          frameSize
+        }
+      };
+      dataset.addExample(example); 
+    }
+    tSec0 += noiseStrideSec;
+  }
+
+  console.log('\nExtracting event examples');  // DEBUG
   for (const event of events) {
     for (const jitter of [-0.5, 0, 0.5]) {
       const tCenter = (event.tBeginSec + event.tEndSec) / 2;
-      const tCenterJitter = tCenter + jitter * window;
-      const t0 = tCenterJitter - window / 2;
-      const t1 = tCenterJitter + window / 2;
+      const tCenterJitter = tCenter + jitter * windowSec;
+      const t0 = tCenterJitter - windowSec / 2;
+      const t1 = tCenterJitter + windowSec / 2;
       console.log(
           `Label ${event.label}: jitter=${jitter}: ` +
           `t0=${t0.toFixed(3)}; t1=${t1.toFixed(3)}`);  // DEBUG
@@ -338,50 +385,7 @@ async function runWavWithLabels(wavPath,
         dataset.addExample(example);
       }
     }
-    eventCount++;
-    console.log(`=== eventCount = ${eventCount} ===`)
-    // if (eventCount === 15) {
-    //   break;  // DEBUG  
-    // } 
   }
-
-  // // Extract the _background_noise_ examples.
-  // const noiseStrideSec = 0.5;
-  // const noiseStrideFrames = Math.round(noiseStrideSec / frameDurationSec);
-  // console.log(`noiseStrideFrames = ${noiseStrideFrames}`);  // DEBUG
-  // let frame0 = 0;
-  // while (true) {
-  //   const frame1 = frame0 + requiredNumFrames;
-  //   const t0 = frame0 * frameDurationSec;
-  //   const t1 = frame1 * frameDurationSec;
-  //   const i0 = frame0 * frameSize;
-  //   const i1 = frame1 * frameSize;
-  //   if (i1 >= data.length) {
-  //     break;
-  //   }
-  //   // Determine if there is any overlap between the window and the events.
-  //   let overlap = false;
-  //   for (const event of events) {
-  //     if (!(t1 < event.tBeginSec || t0 >= event.tEndSec)) {
-  //       overlap = true;
-  //       console.log('Skipping an overlap:', t0, t1);  // DEBUG
-  //       frame0 = frame1;
-  //       break;
-  //     }
-  //   }
-  //   if (overlap) {
-  //     continue;
-  //   }
-  //   const example = {
-  //     label: '_background_noise_',  // TODO(cais): Do not hardcode.
-  //     spectrogram: {
-  //       data: new Float32Array(data.slice(i0, i1)),
-  //       frameSize
-  //     }
-  //   };
-  //   dataset.addExample(example);
-  //   frame0 += noiseStrideFrames;
-  // }
 
   console.log(`outputPath = ${outputPath}`);  // DEBUG
   fs.writeFileSync(outputPath, new Buffer(dataset.serialize()));
