@@ -308,22 +308,16 @@ async function runWavWithLabels(wavPath,
   const dataset = new speechCommands.Dataset();
   const frameDurationSec = nFFTIn / targetSampleFreqHz;
   let eventCount = 0;
+  const window = frameDurationSec * numRequiredFrames;
   for (const event of events) {
-    // const origFrame0 = Math.floor(event.tBeginSec / frameDurationSec);
-    // const origFrame1 = Math.floor(event.tEndSec / frameDurationSec);
-    // if (origFrame1 === origFrame0) {
-    //   continue;
-    // }
-    for (const jitter of [-0.2, 0, 0.2]) {
-      
-      const t0 = event.tBeginSec + (event.tEndSec - event.tBeginSec) * jitter;
-      const t1 = t0 + frameDurationSec * numRequiredFrames;
+    for (const jitter of [-0.5, 0, 0.5]) {
+      const tCenter = (event.tBeginSec + event.tEndSec) / 2;
+      const tCenterJitter = tCenter + jitter * window;
+      const t0 = tCenterJitter - window / 2;
+      const t1 = tCenterJitter + window / 2;
       console.log(
           `Label ${event.label}: jitter=${jitter}: ` +
           `t0=${t0.toFixed(3)}; t1=${t1.toFixed(3)}`);  // DEBUG
-      // const frame0 =
-      //     origFrame0 + Math.round((origFrame1 - origFrame0) * jitter);
-      // let frame1 = frame0 + requiredNumFrames;
 
       const data =
           await runFile(datPath, targetSampleFreqHz, nFFTIn, page, t0, t1);
@@ -333,22 +327,6 @@ async function runWavWithLabels(wavPath,
           `data #frames=${numActualFrames}`);  // DEBUG
       
       // TODO(cais): Better logic for jitter.
-      // if (frame1 - frame0 < requiredNumFrames) {
-      //   frame1 = frame0 + requiredNumFrames;
-      //   // TODO(cais): Add logic for temporal jitter.
-      // } else if (frame1 - frame0 > requiredNumFrames) {
-      //   throw new Error('Not Implemented yet')
-      // }
-      // const i0 = frame0 * frameSize;
-      // const i1 = frame1 * frameSize;
-  
-      // if (i0 < 0 || i1 >= data.length) {
-      //   console.warn(`WARNING: Skipping and event of label ${event.label}`);
-      //   continue;
-      // }
-      // console.log(
-      //   `Label ${event.label}: [${event.tBeginSec}, ${event.tEndSec}] ` +
-      //   `--> [${i0}, ${i1}]`);
       if (numActualFrames === numRequiredFrames) {
         const example = {
           label: event.label,
@@ -367,7 +345,6 @@ async function runWavWithLabels(wavPath,
     // } 
   }
 
-  // TODO(cais): Restore.
   // // Extract the _background_noise_ examples.
   // const noiseStrideSec = 0.5;
   // const noiseStrideFrames = Math.round(noiseStrideSec / frameDurationSec);
