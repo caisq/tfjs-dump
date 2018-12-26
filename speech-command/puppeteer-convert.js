@@ -38,12 +38,8 @@ const speechCommands = require('@tensorflow-models/speech-commands');
  * @param {number} tEndSec Optional ending time, in seconds.
  * @return Result of conversion.
  */
-async function runFile(inputFilePath,
-                       sampleFreqHz,
-                       nFFTIn,
-                       page,
-                       tBeginSec,
-                       tEndSec) {
+async function runFile(
+    inputFilePath, sampleFreqHz, nFFTIn, page, tBeginSec, tEndSec) {
   let browser;
   if (page == null) {
     browser = await pup.launch();
@@ -78,7 +74,7 @@ async function runFile(inputFilePath,
         await fileInput.uploadFile(inputFilePath);
         // await page.evaluate((param) => setParam(param), param);
         await page.evaluate((param) => doConversion(param), param);
-        
+
         // await page.evaluate(() => doConversion());
         break;
       } catch (err) {
@@ -99,8 +95,8 @@ async function runFile(inputFilePath,
     }
     if (result.completed) {
       // TODO(cais): Implement resumption. Deal with incomplete.
-      // console.log(`Complete: frameCounter = ${result.frameCounter}`);  // DEBUG
-      // console.log(`          ${result.data.length / frameSize}`);
+      // console.log(`Complete: frameCounter = ${result.frameCounter}`);  //
+      // DEBUG console.log(`          ${result.data.length / frameSize}`);
       break;
     } else {
       // TODO(cais)
@@ -158,7 +154,7 @@ async function runBaseLevelDirectory(inputPath, outputPath, sampleFreqHz) {
   const dataset = new speechCommands.Dataset();
 
   for (const fileToUpload of filesToUpload) {
-    const nFFTIn = 1024;  // TODO(cais): DO NOT HARDCODE.
+    const nFFTIn = 1024;    // TODO(cais): DO NOT HARDCODE.
     const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
     const data = await runFile(fileToUpload, sampleFreqHz, nFFTIn, page);
     const example = {
@@ -234,13 +230,43 @@ async function runNestedDirectory(
   }
 }
 
-async function convertWavToDat(wavPath, datPath) {
+async function convertWavToDat(
+    wavPath, datPath, words, unknownWords, includeNoise) {
+  // TODO(cais): This should specify --target_fs.
   console.log('AAA');  // DEBUG
   if (datPath == null) {
     datPath = tempfile('.dat');
+    console.log(`Temporary datPath: ${datPath}`);
   }
+
+  const commandArgs = [wavPath, datPath];
+  if (fs.lstatSync(wavPath).isDirectory()) {
+    if (words == null || words.length === 0) {
+      throw new Error('Must specify words if wavPath is a directory');
+    }
+    commandArgs.push('--words', words);
+    if (unknownWords != null) {
+      commandArgs.push('--unknown_words', unknownWords);
+    }
+    if (includeNoise) {
+      commandArgs.push('--include_noise');
+    }
+  } else {
+    if (words != null) {
+      throw new Error('Invalid option `words` if wavPath is a file');
+    }
+    if (unknownWords != null) {
+      throw new Error('Invalid option `unknownWords` if wavPath is a file');
+    }
+    if (includeNoise != null) {
+      throw new Error('Invalid option `includeNoise` if wavPath is a file');
+    }
+  }
+
   return new Promise((resolve, reject) => {
-    const conversion = childprocess.spawn('./prep_wavs.py', [wavPath, datPath]);
+    console.log(`Calling Python script prep_wavs.py with args: ${commandArgs}`);
+
+    const conversion = childprocess.spawn('./prep_wavs.py', commandArgs);
     conversion.on('close', code => {
       console.log(`close with code: ${code}`);
       if (code === 0) {
@@ -253,7 +279,7 @@ async function convertWavToDat(wavPath, datPath) {
 }
 
 /**
- * 
+ *
  * @param {*} labelsPath Path to the .labels file.
  */
 function loadLabels(labelsPath) {
@@ -278,25 +304,21 @@ function loadLabels(labelsPath) {
     const tBeginSec = +items[1];
     const tEndSec = +items[2];
     if (tEndSec <= tBeginSec) {
-      throw new Error(
-          `tEnd is earlier than or equal to tBegin in: "${line}"`);
+      throw new Error(`tEnd is earlier than or equal to tBegin in: "${line}"`);
     }
     events.push({label, tBeginSec, tEndSec});
   }
   return events;
 }
 
-async function runWavWithLabels(wavPath,
-                                labelsPath,
-                                nFFTIn,
-                                targetSampleFreqHz,
-                                outputPath) {
+async function runWavWithLabels(
+    wavPath, labelsPath, nFFTIn, targetSampleFreqHz, outputPath) {
   const events = loadLabels(labelsPath);
   console.log(events);  // DEBUG
 
   const browser = await pup.launch();
   const page = await browser.newPage();
-  
+
   // Convert the .wav file to .dat format.
   console.log(`Converting ${wavPath} to .dat format...`);
   const datPath = await convertWavToDat(wavPath);
@@ -304,8 +326,8 @@ async function runWavWithLabels(wavPath,
 
   const totalLengthSec = getDatFileLengthSec(datPath, targetSampleFreqHz);
 
-  const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
-  const numRequiredFrames = 43; // TODO(cais): DO NOT HARDCODE.
+  const frameSize = 232;         // TODO(cais): DO NOT HARDCODE.
+  const numRequiredFrames = 43;  // TODO(cais): DO NOT HARDCODE.
 
   const dataset = new speechCommands.Dataset();
   const frameDurationSec = nFFTIn / targetSampleFreqHz;
@@ -345,12 +367,9 @@ async function runWavWithLabels(wavPath,
     if (numActualFrames === numRequiredFrames) {
       const example = {
         label: '_background_noise_',  // TODO(cais): Do not hardcode.
-        spectrogram: {
-          data: new Float32Array(data),
-          frameSize
-        }
+        spectrogram: {data: new Float32Array(data), frameSize}
       };
-      dataset.addExample(example); 
+      dataset.addExample(example);
     }
     tSec0 += noiseStrideSec;
   }
@@ -372,13 +391,14 @@ async function runWavWithLabels(wavPath,
       console.log(
           `data.length=${data.length}; ` +
           `data #frames=${numActualFrames}`);  // DEBUG
-      
+
       // TODO(cais): Better logic for jitter.
       if (numActualFrames === numRequiredFrames) {
         const example = {
           label: event.label,
           spectrogram: {
-            data: new Float32Array(data.slice(0, numRequiredFrames * frameSize)),  // TODO(cais): Fix.
+            data: new Float32Array(data.slice(
+                0, numRequiredFrames * frameSize)),  // TODO(cais): Fix.
             frameSize
           }
         };
@@ -421,15 +441,46 @@ async function run() {
     defaultValue: 44100,
     help: 'Target sampling frequency in Hz'
   });
+  parser.addArgument('--words', {
+    type: 'string',
+    help: 'words to include (this does not include the _unknown_)' +
+        'words'
+  });
+  parser.addArgument(
+      '--unknownWords',
+      {type: 'string', help: 'words to include in the _unknown_ category'});
+  parser.addArgument('--includeNoise', {
+    action: 'storeTrue',
+    help: 'Include examples in the _background_noise_ category'
+  });
+
   // TODO(cais): Add option for sampling frequency.
   const args = parser.parseArgs();
 
   if (fs.lstatSync(args.inputPath).isDirectory()) {
+    if (args.words == null || args.words.length === 0) {
+      throw new Error('Must specify words if inputPath is a directory');
+    }
+    console.log(`words = ${args.words}`);
+    console.log(`unknownWords = ${args.unknownWords}`);
+    console.log(`includeNoise = ${args.includeNoise}`);
+
+    const datPath = await convertWavToDat(
+        args.inputPath,
+        null,
+        args.words,
+        args.unknownWords,
+        args.includeNoise
+    );
+
     // Assume the directory is the canonical data format.
     // TODO(cais): Call `python prep_wavs.py` via childprocess from here.
     //   Simplify the user workflow by saving that manual step.
+
     await runNestedDirectory(
         args.inputPath, args.outputPath, args.targetSampleFreqHz);
+
+    fs.unlinkSync(datPath);
   } else if (fs.statSync(args.inputPath).isFile()) {
     if (args.inputPath.endsWith('.wav')) {
       // Check that an accompanying .labels file exists.
@@ -438,10 +489,10 @@ async function run() {
             '--labelsPath is not specified. It must be specified if ' +
             'inputPath is a .wav file.');
       }
-      
+
       await runWavWithLabels(
-          args.inputPath, args.labelsPath, args.nFFTIn,
-          args.targetSampleFreqHz, args.outputPath);
+          args.inputPath, args.labelsPath, args.nFFTIn, args.targetSampleFreqHz,
+          args.outputPath);
     } else {
       throw new Error(
           `Unsupported extension name in input file. ` +

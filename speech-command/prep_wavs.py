@@ -193,17 +193,17 @@ def convert(in_wav_path,
     Length (in # of samples) of the waveform in the file at
       `out_data_path`.
   '''
-  print('convert(): out_data_path = %s' % out_data_path)  # DEBUG
+  # print('convert(): out_data_path = %s' % out_data_path)  # DEBUG
   waveform = load_and_normalize_waveform(in_wav_path,
                                          target_fs,
                                          frame_size)
   out_waveforms = []
-  print('match_len = %s' % match_len)  # DEBUG
+  # print('match_len = %s' % match_len)  # DEBUG
   if match_len is None:
     # Extract the entire waveform from the single .wav file.
     out_waveforms.append(waveform)
   else:
-    print(len(waveform))  # DEBUG
+    # print(len(waveform))  # DEBUG
     if len(waveform) > match_len:
       if not multi_splits:
         out_waveforms.append(waveform[:match_len])
@@ -241,13 +241,13 @@ def convert(in_wav_path,
 
   out_file_paths = []
   if len(out_waveforms) == 1:
-    print('out_waveforms len == 1')  # DEBUG
+    # print('out_waveforms len == 1')  # DEBUG
     out_file_paths.append(out_data_path)
   else:
     file_name, ext_name = os.path.splitext(out_data_path)
     for i in range(len(out_waveforms)):
       out_file_paths.append('%s_split%d%s' % (file_name, i, ext_name))
-  print('out_file_paths = %s' % out_file_paths)  # DEBUG
+  # print('out_file_paths = %s' % out_file_paths)  # DEBUG
 
   for out_path, out_waveform in zip(out_file_paths, out_waveforms):
     with open(out_path, 'wb') as out_file:
