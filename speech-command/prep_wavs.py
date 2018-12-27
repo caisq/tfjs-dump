@@ -417,7 +417,8 @@ def main():
       word_input_dir = os.path.join(FLAGS.input_wav_path, word)
       train_out_dir = os.path.join(
           train_base, '_unknown_' if word in unknown_words else word)
-      test_out_dir = os.path.join(test_base, word)
+      test_out_dir = os.path.join(
+          test_base, '_unknown_' if word in unknown_words else word)
 
       multi_splits = ((word == _BACKGROUND_NOISE_DIR) or
                       FLAGS.all_words_multi_splits)
