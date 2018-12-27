@@ -16,6 +16,7 @@
     "eslint": "4.19.1",
     "http-server": "~0.11.1",
     "puppeteer": "1.10.0",
+    "rimraf": "^2.6.2",
     "shelljs": "0.8.3",
     "tempfile": "2.0.0",
     "yalc": "1.0.0-pre.24"
