@@ -20,6 +20,7 @@ const path = require('path');
 
 const argparse = require('argparse');
 const childprocess = require('child_process');
+const rimraf = require('rimraf');
 const shelljs = require('shelljs');
 const tempfile = require('tempfile');
 
@@ -124,7 +125,16 @@ async function runFile(
  * TODO(cais): Doc string.
  */
 async function runBaseLevelDirectory(inputPath, outputPath, sampleFreqHz) {
-  console.log(`runBaseLevelDirectory: ${inputPath}`);  // DEBUG
+  // Figure out the word label based on the path.
+  const pathItems = inputPath.split(path.sep);
+  const label = pathItems[pathItems.length - 2];
+  if (label == null || label.length === 0) {
+    throw new Error(
+        `Cannot determine word label from input path: ${inputPath}`);
+  }
+  // DEBUG
+  console.log(`=== runBaseLevelDirectory: ${inputPath}, label=${label}`);
+
   // TODO(cais): Extract the label from the inputPath directly.
 
   if (!fs.existsSync(inputPath)) {
@@ -158,7 +168,7 @@ async function runBaseLevelDirectory(inputPath, outputPath, sampleFreqHz) {
     const frameSize = 232;  // TODO(cais): DO NOT HARDCODE.
     const data = await runFile(fileToUpload, sampleFreqHz, nFFTIn, page);
     const example = {
-      label: '_dummy_label_',
+      label,
       spectrogram: {data: new Float32Array(data), frameSize}
     };
     dataset.addExample(example);
@@ -197,6 +207,9 @@ function getDatFileLengthSec(datFilePath, sampleFreqHz) {
 
 async function runNestedDirectory(
     inputDir, outputRoot, sampleFreqHz, outputRelPath = '') {
+  console.log(
+      `runNestedDirectory(): inputDir=${inputDir}; ` +
+      `outputRoot=${outputRoot}; sampleFreqHz=${sampleFreqHz}`);  // DEBUG
   if (!fs.existsSync(inputDir)) {
     throw new Error(`Nonexistent input path: ${inputDir}`);
   }
@@ -239,7 +252,7 @@ async function convertWavToDat(
     console.log(`Temporary datPath: ${datPath}`);
   }
 
-  const commandArgs = [wavPath, datPath];
+  const commandArgs = [wavPath, datPath, '--recordings_per_subfolder', 100];
   if (fs.lstatSync(wavPath).isDirectory()) {
     if (words == null || words.length === 0) {
       throw new Error('Must specify words if wavPath is a directory');
@@ -264,9 +277,17 @@ async function convertWavToDat(
   }
 
   return new Promise((resolve, reject) => {
-    console.log(`Calling Python script prep_wavs.py with args: ${commandArgs}`);
+    console.log(
+        `Calling Python script prep_wavs.py with args: ` +
+        `${commandArgs.join(' ')}`);
 
     const conversion = childprocess.spawn('./prep_wavs.py', commandArgs);
+    conversion.stdout.on('data', data => {
+      console.log(`stdout: ${data}`);
+    });
+    conversion.stderr.on('data', data => {
+      console.error(`stderr: ${data}`);
+    });
     conversion.on('close', code => {
       console.log(`close with code: ${code}`);
       if (code === 0) {
@@ -458,6 +479,7 @@ async function run() {
   const args = parser.parseArgs();
 
   if (fs.lstatSync(args.inputPath).isDirectory()) {
+    // TODO(cais): Refactor this if-else barnch into a function.
     if (args.words == null || args.words.length === 0) {
       throw new Error('Must specify words if inputPath is a directory');
     }
@@ -465,22 +487,16 @@ async function run() {
     console.log(`unknownWords = ${args.unknownWords}`);
     console.log(`includeNoise = ${args.includeNoise}`);
 
-    const datPath = await convertWavToDat(
-        args.inputPath,
-        null,
-        args.words,
-        args.unknownWords,
-        args.includeNoise
-    );
-
     // Assume the directory is the canonical data format.
-    // TODO(cais): Call `python prep_wavs.py` via childprocess from here.
-    //   Simplify the user workflow by saving that manual step.
+    const datPath = await convertWavToDat(
+        args.inputPath, null, args.words, args.unknownWords, args.includeNoise);
 
-    await runNestedDirectory(
-        args.inputPath, args.outputPath, args.targetSampleFreqHz);
+    console.log(
+        '\n.wav -> .dat conversion is complete. ' +
+        'Starting puppeteer conversion step.');
+    await runNestedDirectory(datPath, args.outputPath, args.targetSampleFreqHz);
 
-    fs.unlinkSync(datPath);
+    rimraf(datPath, () => {});
   } else if (fs.statSync(args.inputPath).isFile()) {
     if (args.inputPath.endsWith('.wav')) {
       // Check that an accompanying .labels file exists.
