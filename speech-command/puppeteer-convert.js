@@ -252,7 +252,9 @@ async function convertWavToDat(
     console.log(`Temporary datPath: ${datPath}`);
   }
 
-  const commandArgs = [wavPath, datPath, '--recordings_per_subfolder', 100];
+  const commandArgs = [
+    wavPath, datPath, '--recordings_per_subfolder', 100, '--no_filling'
+  ];
   if (fs.lstatSync(wavPath).isDirectory()) {
     if (words == null || words.length === 0) {
       throw new Error('Must specify words if wavPath is a directory');
