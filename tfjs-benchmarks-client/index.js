@@ -27,12 +27,19 @@ async function run() {
         modelCell.attributes['modelName'] = modelName;
         modelCell.attributes['functionName'] = functionName;
         modelCell.addEventListener('click', async event => {
-          const {endingTimestampMs, averageTimeMs, environmentTypes} = await getTimingData(
+          const {
+            endingTimestampMs,
+            averageTimeMs,
+            environmentTypes,
+            hostNames
+          } = await getTimingData(
               event.srcElement.attributes['modelName'],
               event.srcElement.attributes['functionName']);
           console.log('endingTimestampMs:',  endingTimestampMs);
           console.log('averageTimeMs:',  averageTimeMs);
-          console.log('environmentTypes:', environmentTypes);;
+          console.log('environmentTypes:', environmentTypes);
+          console.log('hostNames:', hostNames);
+
           const dataPython = {x: [], y: [], type: 'scatter', name: 'python-tensorflow-cpu'};
           const dataChromeLinux = {x: [],  y: [], type: 'scatter', name: 'chrome-linux'};
           const endingDateTimes = endingTimestampMs.map(t => new Date(t));
@@ -59,17 +66,32 @@ async function run() {
   }
   await getAllTasks();
 
-  let environmentInfoCache;
-  async function getEnvironmentInfo(id) {
-    if (environmentInfoCache == null) {
-      console.log('Getting environment info');  // DEBUG
-      const querySnapshot = await db.collection('Environments').get();
-      environmentInfoCache = {};
-      querySnapshot.forEach(doc => {
-        environmentInfoCache[doc.id] = doc.data();
-      });
+  let environmentInfoCache = {};
+  async function batchGetEnvironmentInfo(ids) {
+    let unknownIds = [];
+    ids.forEach(id => {
+      if (!(id in environmentInfoCache)) {
+        unknownIds.push(id);
+      }
+    });
+    if (unknownIds.length > 0) {
+      const collection = db.collection('Environments');
+      console.log(`Getting environmentInfo for ${ids.length} ids`);
+      const docPromises = ids.map(id => collection.doc(id).get());
+      const docs = await Promise.all(docPromises);
+      docs.forEach(doc => environmentInfoCache[doc.id] = doc.data());
     }
-    return environmentInfoCache[id];
+    return ids.map(id => environmentInfoCache[id]);
+  }
+
+  function parseHostName(environmentInfo) {
+    if (environmentInfo == null) {
+      return null;
+    }
+    if (environmentInfo.systemInfo == null) {
+      return null;
+    }
+    return environmentInfo.systemInfo.split(' ')[1];
   }
 
   async function getTimingData(modelName, functionName) {
@@ -83,6 +105,7 @@ async function run() {
         const averageTimeMs = [];
         const environmentIds = [];
         const environmentTypes = [];
+        const hostNames = [];
         querySnapshot.forEach(async doc => {
           const data = doc.data();
           endingTimestampMs.push(data.endingTimestampMs);
@@ -90,60 +113,22 @@ async function run() {
           environmentIds.push(data.environmentId);
         });
 
-        for (const environmentId of environmentIds) {
-          const environmentInfo = await getEnvironmentInfo(environmentId);
+        const infoItems = await batchGetEnvironmentInfo(environmentIds);
+        for (let i = 0; i < environmentIds.length; ++i) {
+          const environmentInfo = infoItems[i];
           environmentTypes.push(
               environmentInfo == null ? null : environmentInfo.type);
+          hostNames.push(parseHostName(environmentInfo));
         }
         console.log('resolving');
-        resolve({endingTimestampMs, averageTimeMs, environmentTypes});
+        resolve({
+          endingTimestampMs,
+          averageTimeMs,
+          environmentTypes,
+          hostNames
+        });
       }).catch(error => reject(error));
     });
   }
-
-  // const deleteBatch = db.batch();
-  // Read all data in a collection.
-  // db.collection('TaskLogs').get().then(querySnapshot => {
-  //     querySnapshot.forEach(doc => {
-  //         console.log(`${doc.id} => ${JSON.stringify(doc.data())}`);
-  //     });
-  // });
-  // Read data by id.
-  // db.collection('test1').doc('1234556y').get().then(doc => {
-  //     console.log(`${doc.id} => ${JSON.stringify(doc.data())}`);
-  // });
-
-  // Add data.
-  // db.collection('test1').add({
-  //     "averageRunTimeMs": 1.88,
-  //     "modelName": "MobileNetV2",
-  //     "modelTaskType": "predict",
-  //     "timestamp": new Date().getTime()
-  // }).then(docRef => {
-  //     console.log(`Added document with id: ${docRef.id}`);
-  // });
-
-  // Query.
-  // const query = db.collection('BenchmarkRuns')
-  //     .where('modelName', '==', 'dense-large')
-  //     .where('functionName', '==', 'predict')
-  //     .orderBy('endingTimestampMs');
-  // query.get().then(querySnapshot => {
-  //     console.log('In snapshot', querySnapshot);
-  //     querySnapshot.forEach(doc => {
-  //         // console.log(`${doc.id} => ${JSON.stringify(doc.data())}`);
-  //         const data = doc.data();
-  //         console.log(
-  //             `taskId=${data.taskId}; ` +
-  //             `environmentId=${data.environmentId}; ` +
-  //             `versionSetId=${data.versionSetId}; ` +
-  //             `modelName=${data.modelName}; ` +
-  //             `functionName=${data.functionName}; ` +
-  //             `timestamp=${data.endingTimestampMs}; ` +
-  //             `averageTimeMs=${data.averageTimeMs.toFixed(3)}`);
-  //     });
-  // }).catch(error => {
-  //     console.log('query get error:', error);
-  // });
 }
 run();
