@@ -1,16 +1,16 @@
-const taskTable = document.getElementById('task-table');
+const taskList = document.getElementById('task-list');
 
 async function run() {
   await firebase.initializeApp({
       authDomain: 'jstensorflow.firebaseapp.com',
       projectId: 'jstensorflow'
   });
-  console.log('initializeApp DONE');
-
   const db = firebase.firestore();
+  console.log('initializeApp DONE');
 
   async function getAllTasks() {
     const query = db.collection('Tasks').where('taskType', '==', 'model');
+    const listItems = {};
     query.get().then(querySnapshot => {
       const modelAndFunctions = [];
       querySnapshot.forEach(doc => {
@@ -21,12 +21,21 @@ async function run() {
       modelAndFunctions.forEach(modelAndFunction => {
         const [modelName, functionName] = modelAndFunction;
 
-        const row = document.createElement('tr');
-        const modelCell = document.createElement('td');
-        modelCell.textContent = modelName;
-        modelCell.attributes['modelName'] = modelName;
-        modelCell.attributes['functionName'] = functionName;
-        modelCell.addEventListener('click', async event => {
+        if (listItems[modelName] == null) {
+          const modelItem = document.createElement('li');
+          listItems[modelName] = (modelItem);
+          const modelNameSpan = document.createElement('span');
+          modelNameSpan.classList.add('model-name-span');
+          modelNameSpan.textContent = modelName;
+          modelItem.appendChild(modelNameSpan);
+        }
+
+        const functionSpan = document.createElement('span');
+        functionSpan.attributes['modelName'] = modelName;
+        functionSpan.attributes['functionName'] = functionName;
+        functionSpan.classList.add('function-name-span');
+        functionSpan.textContent = functionName;
+        functionSpan.addEventListener('click', async event => {
           const modelName = event.srcElement.attributes['modelName'];
           const functionName = event.srcElement.attributes['functionName'];
           const {
@@ -38,16 +47,25 @@ async function run() {
           const endingDateTimes = endingTimestampMs.map(t => new Date(t));
 
           const dataByEnvAndHost = {};
+          let maxAverageTimeMs = -Infinity;
           for (let i = 0; i < environmentTypes.length; ++i) {
             if (environmentTypes[i] == null || hostNames[i] == null) {
               continue;
             }
             const envAndHost = `${environmentTypes[i]}@${hostNames[i]}`;
             if (!(envAndHost in dataByEnvAndHost)) {
-              dataByEnvAndHost[envAndHost] = {x: [], y: [], type: 'scatter', name: envAndHost};
+              dataByEnvAndHost[envAndHost] = {
+                x: [],
+                y: [],
+                type: 'scatter',
+                name: envAndHost
+              };
             }
             dataByEnvAndHost[envAndHost].x.push(endingDateTimes[i]);
             dataByEnvAndHost[envAndHost].y.push(averageTimeMs[i]);
+            if (averageTimeMs[i] > maxAverageTimeMs) {
+              maxAverageTimeMs = averageTimeMs[i];
+            }
           }
 
           const dataArray = [];
@@ -55,20 +73,23 @@ async function run() {
             dataArray.push(dataByEnvAndHost[envAndHost]);
           }
 
+          const yRange = Number.isFinite(maxAverageTimeMs) ?
+              [0, maxAverageTimeMs * 1.35] : null;
           Plotly.newPlot('main-plot', dataArray, {
             title: {text: `${modelName}.${functionName}`},
             xaxis: {title: {text: 'Date Time'}},
-            yaxis: {title: {text: 'Average Time (ms)'}}
+            yaxis: {
+              title: {text: 'Average Time (ms)'},
+              range: yRange
+            }
           });
         });
-        row.appendChild(modelCell);
-
-        const functionCell = document.createElement('td');
-        functionCell.textContent = functionName;
-        row.appendChild(functionCell);
-
-        taskTable.appendChild(row);
+        listItems[modelName].appendChild(functionSpan);
       });
+
+      for (const key in listItems) {
+        taskList.appendChild(listItems[key]);
+      }
     });
   }
   await getAllTasks();
