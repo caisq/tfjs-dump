@@ -1,0 +1,20 @@
+td,th {
+  text-align: left;
+	font-family: verdana,arial,sans-serif;
+	font-size:15px;
+	color:#333333;
+  border-width: 1px;
+  border-style: solid;
+	border-color: #666666;
+  border-collapse: collapse;
+  padding: 2px;
+  padding-right: 20px;
+}
+
+#task-table {
+  display: inline-block;
+}
+
+#main-plot {
+  display: inline-block;
+}
