@@ -27,32 +27,39 @@ async function run() {
         modelCell.attributes['modelName'] = modelName;
         modelCell.attributes['functionName'] = functionName;
         modelCell.addEventListener('click', async event => {
+          const modelName = event.srcElement.attributes['modelName'];
+          const functionName = event.srcElement.attributes['functionName'];
           const {
             endingTimestampMs,
             averageTimeMs,
             environmentTypes,
             hostNames
-          } = await getTimingData(
-              event.srcElement.attributes['modelName'],
-              event.srcElement.attributes['functionName']);
-          console.log('endingTimestampMs:',  endingTimestampMs);
-          console.log('averageTimeMs:',  averageTimeMs);
-          console.log('environmentTypes:', environmentTypes);
-          console.log('hostNames:', hostNames);
-
-          const dataPython = {x: [], y: [], type: 'scatter', name: 'python-tensorflow-cpu'};
-          const dataChromeLinux = {x: [],  y: [], type: 'scatter', name: 'chrome-linux'};
+          } = await getTimingData(modelName, functionName);
           const endingDateTimes = endingTimestampMs.map(t => new Date(t));
-          for (let i = 0; i < endingTimestampMs.length; ++i) {
-            if (environmentTypes[i] === 'python-tensorflow-cpu') {
-              dataPython.x.push(endingDateTimes[i]);
-              dataPython.y.push(averageTimeMs[i]);
-            } else if (environmentTypes[i] === 'chrome-linux') {
-              dataChromeLinux.x.push(endingDateTimes[i]);
-              dataChromeLinux.y.push(averageTimeMs[i]);
+
+          const dataByEnvAndHost = {};
+          for (let i = 0; i < environmentTypes.length; ++i) {
+            if (environmentTypes[i] == null || hostNames[i] == null) {
+              continue;
             }
+            const envAndHost = `${environmentTypes[i]}@${hostNames[i]}`;
+            if (!(envAndHost in dataByEnvAndHost)) {
+              dataByEnvAndHost[envAndHost] = {x: [], y: [], type: 'scatter', name: envAndHost};
+            }
+            dataByEnvAndHost[envAndHost].x.push(endingDateTimes[i]);
+            dataByEnvAndHost[envAndHost].y.push(averageTimeMs[i]);
           }
-          Plotly.newPlot('main-plot', [dataPython, dataChromeLinux]);
+
+          const dataArray = [];
+          for (const envAndHost in dataByEnvAndHost) {
+            dataArray.push(dataByEnvAndHost[envAndHost]);
+          }
+
+          Plotly.newPlot('main-plot', dataArray, {
+            title: {text: `${modelName}.${functionName}`},
+            xaxis: {title: {text: 'Date Time'}},
+            yaxis: {title: {text: 'Average Time (ms)'}}
+          });
         });
         row.appendChild(modelCell);
 
@@ -76,7 +83,7 @@ async function run() {
     });
     if (unknownIds.length > 0) {
       const collection = db.collection('Environments');
-      console.log(`Getting environmentInfo for ${ids.length} ids`);
+      console.log(`** Downloading environmentInfo for ${ids.length} ids **`);
       const docPromises = ids.map(id => collection.doc(id).get());
       const docs = await Promise.all(docPromises);
       docs.forEach(doc => environmentInfoCache[doc.id] = doc.data());
@@ -120,7 +127,6 @@ async function run() {
               environmentInfo == null ? null : environmentInfo.type);
           hostNames.push(parseHostName(environmentInfo));
         }
-        console.log('resolving');
         resolve({
           endingTimestampMs,
           averageTimeMs,
