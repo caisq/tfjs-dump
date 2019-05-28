@@ -1,0 +1,41 @@
+ul {
+  border-style: solid;
+  border-color: orange;
+  border-width: 1px;
+  display: inline-block;
+}
+
+li {
+  text-align: left;
+	font-family: verdana,arial,sans-serif;
+	font-size:15px;
+	color:#333333;
+  padding: 3px;
+  padding-right: 20px;
+}
+
+.model-name-span {
+  display: inline-block;
+  width: 200px;
+  font-weight: bold;
+}
+
+.function-name-span {
+  display: inline-block;
+  width: 100px;
+  text-decoration: underline;
+  color: blue
+}
+
+#main-div {
+  display: table-cell;
+  vertical-align: middle;
+}
+
+#task-table {
+  display: inline-block;
+}
+
+#main-plot {
+  display: inline-block;
+}
