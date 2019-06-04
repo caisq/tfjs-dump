@@ -8,20 +8,15 @@ tf.enable_eager_execution()
 
 def trace_function(frame, event, arg):
 
-  print('event = %s' % event)
-  # print('stack:', frame.stack)
-  # print(frame.f_exc_tracecback)
-  print('%s: Line %d' % (frame.f_code.co_filename, frame.f_lineno))
-  print('locals:', frame.f_locals)
-
   if '__file__' in globals() and frame.f_code.co_filename == __file__:
-    raw_input()
+    print('%s @ %s (%s): Line %d' %
+          (event, frame.f_code.co_filename, frame.f_code.co_name,
+           frame.f_lineno))
+    print('locals:', frame.f_locals)
+    input()
     return trace_function
   else:
     return None
-
-
-sys.settrace(trace_function)
 
 
 def _add_one(x):
@@ -38,5 +33,7 @@ def main():
   z = _add_one(z)
   print(z)
 
+
+sys.settrace(trace_function)
 
 main()
