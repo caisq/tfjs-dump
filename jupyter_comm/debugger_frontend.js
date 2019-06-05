@@ -32,7 +32,6 @@ class CommHandler {
   }
 }
 
-
 function main() {
   const extensionDiv = document.getElementById('extension-div');
   const childDiv = document.createElement('div');
