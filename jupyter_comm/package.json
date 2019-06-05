@@ -1,0 +1,18 @@
+{
+    "name": "jupyter-comm",
+    "version": "0.0.0",
+    "scripts": {
+      "test": "jest",
+      "build": "tsc"
+    },
+    "keywords": [
+      "typescript",
+      "npm",
+      "boilerplate",
+      "library"
+    ],
+    "author": "Shanqing Cai",
+    "devDependencies": {
+      "typescript": "^3.5.1"
+    }
+  }
