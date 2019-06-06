@@ -1,12 +1,13 @@
 import {JupyterClass, JupyterCommMessage} from './jupyter_types';
 import {toHTMLEntities} from './string_utils';
+import {DebuggerWatchPanel, VariableSummary} from './watch_panel';
 
 declare const Jupyter: JupyterClass;
 
 console.log('In debugger_frontend.ts');  // DEBUG
 
 export interface DebuggerCommand {
-  command: 'step'|'get_local_names';
+  command: 'step';
 }
 
 export interface DebuggerFrameData {
@@ -21,6 +22,8 @@ export interface DebuggerFrameData {
   lineno: number;
 
   function_name: string;
+
+  locals_summary?: VariableSummary[];
 }
 
 export type CodeLinesCallback = (lines: string[]) => Promise<void>|void;
@@ -31,7 +34,6 @@ class CommHandler {
   private comm: any;
   private codeLinesCallback: CodeLinesCallback|null = null;
   private frameDataCallback: FrameDataCallback|null = null;
-
 
   constructor() {
     this.comm = null;
@@ -79,7 +81,10 @@ class DebuggerCompoenent {
   private lineNum2Gutter: {[lineno: number]: HTMLDivElement} = {};
   private activeLineNum: number|null = null;
 
+  private watchPanel: DebuggerWatchPanel;
+
   constructor(rootDiv: HTMLDivElement, codeLines: string[]) {
+    this.codeLines = codeLines;
     this.rootDiv = rootDiv;
 
     this.codeDiv = document.createElement('div');
@@ -87,10 +92,10 @@ class DebuggerCompoenent {
     this.rootDiv.appendChild(this.codeDiv);
 
     this.watchDiv = document.createElement('div');
-    this.watchDiv.classList.add('debugger-extension-watch-div')
-    this.rootDiv.appendChild(this.codeDiv);
+    this.watchDiv.classList.add('debugger-extension-watch-panel');
+    this.rootDiv.appendChild(this.watchDiv);
 
-    this.codeLines = codeLines;
+    this.watchPanel = new DebuggerWatchPanel(this.watchDiv);
   }
 
   public renderCodeLines(): void {
@@ -124,6 +129,10 @@ class DebuggerCompoenent {
     this.activeLineNum = lineNum;
     this.lineNum2Gutter[lineNum].textContent = '▶';
   }
+
+  public setLocalsSummary(localsSummary: VariableSummary[]) {
+    this.watchPanel.renderVariablesSummary(localsSummary);
+  }
 }
 
 function main() {
@@ -148,13 +157,14 @@ function main() {
       });
 
       comm.registerFrameDataCallback((frameData: DebuggerFrameData) => {
-        console.log('frameData:', frameData);  // DEBUG
+        // console.log('frameData:', frameData);  // DEBUG
         if (!frameData.filename.startsWith('<ipython-input-')) {
           return;
         }
         debuggerComponent.setActiveLineNum(frameData.lineno);
-        comm.sendMessage({command: 'get_local_names'});
-        // stepButton.textContent = `Incoming value: ${JSON.stringify(incomingValue)}`;
+        if (frameData.locals_summary != null) {
+          debuggerComponent.setLocalsSummary(frameData.locals_summary);
+        }
       });
       comm.openComm();
     }

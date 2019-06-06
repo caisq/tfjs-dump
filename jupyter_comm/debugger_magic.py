@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import os
 import sys
@@ -13,6 +14,26 @@ import threading
 from IPython.core.magic import register_cell_magic
 
 
+def _trace(message):
+    with open('/tmp/dbg1.log', 'at') as f:
+        f.write('%s\n' % message)
+
+
+def _get_locals_summary(f_locals):
+    locals_summary = []
+    for local_name in f_locals.keys():
+        if local_name.startswith('__'):
+            continue
+        elif local_name in (
+            '_ih', '_dh', '_oh', '_', '_i', '_ii', '_iii', '_i1', '_i2', '_i3'):
+            continue
+        locals_summary.append({
+            'name': local_name,
+            'type': str(type(f_locals[local_name]))
+        })
+    return locals_summary
+
+
 class DebuggerCommHandler(object):
 
     def __init__(self):
@@ -24,18 +45,20 @@ class DebuggerCommHandler(object):
         @comm.on_msg
         def _on_msg(msg):
             data = msg['content']['data']
-            with open('/tmp/dbg1.log', 'at') as f:
-                f.write('data = %s\n' % json.dumps(data))  # DEBUG
+            _trace('data = %s' % json.dumps(data))  # DEBUG
             if data['command'] == 'step':
                 self.step_count += 1
                 self.queue.put('step')
                 if isinstance(self.message, dict):
                     self.message['step_count'] = self.step_count
-                comm.send(self.message)
-            elif data['command'] == 'get_local_names':
-                with open('/tmp/dbg1.log', 'at') as f:
-                  f.write('Local names = %s\n' % json.dumps(list(self.f_locals.keys())))  # DEBUG
-                comm.send({'local_names': list(self.f_locals.keys())})
+                response_message = copy.copy(self.message)
+                locals_summary = _get_locals_summary(self.f_locals)
+                _trace('Locals summary = %s' % json.dumps(locals_summary))
+                response_message['locals_summary'] = locals_summary
+                # _trace('Local names = %s' % json.dumps(list(self.f_locals.keys())))  # DEBUG
+                comm.send(response_message)
+            else:
+                raise Error('Unknown command %s' % data['command'])
 
         comm.send({
             'code_lines': debugger_data['code_lines']
