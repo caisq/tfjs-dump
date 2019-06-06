@@ -9,6 +9,8 @@ export interface DebuggerFrameData {
 
   filename: string;
 
+  lineno: number;
+
   function_name: string;
 }
 
@@ -53,7 +55,6 @@ class CommHandler {
   }
 
   openComm() {
-    console.log('In openComm()');  // DEBUG
     if (Jupyter.notebook.kernel == null) {
       throw new Error('Jupyter notebook kernel is not available.');
     }
@@ -63,7 +64,6 @@ class CommHandler {
     this.comm.on_msg((msg: JupyterCommMessage) => {
       const data = msg.content.data;
       console.log('In on_msg(): data = ', data);  // DEBUG
-
       if ('code_lines' in data && this.codeLinesCallback != null) {
         this.codeLinesCallback(data['code_lines'] as string[]);
       } else if ('event' in data && this.frameDataCallback != null) {
@@ -85,41 +85,88 @@ class CommHandler {
   }
 }
 
-function renderCodeLines(rootDiv: HTMLDivElement, codeLines: string[]): void {
-  console.log('In renderCodeLines()');
-  for (const line of codeLines) {
-    const linePre = document.createElement('pre');
-    linePre.textContent = line;
-    rootDiv.appendChild(linePre);
+function toHTMLEntities(str: string): string {
+  return String(str)
+      .replace(/ /g, '&nbsp;')
+      // .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+}
+
+class DebuggerCompoenent {
+  private readonly rootDiv: HTMLDivElement;
+  private readonly codeLines: string[];
+  private lineNum2Gutter: {[lineno: number]: HTMLDivElement} = {};
+  private activeLineNum: number|null = null;
+
+  constructor(rootDiv: HTMLDivElement, codeLines: string[]) {
+    this.rootDiv = rootDiv;
+    this.codeLines = codeLines;
+  }
+
+  public renderCodeLines(): void {
+    this.codeLines.forEach((line, i) => {
+      const lineElement = document.createElement('div');
+      lineElement.classList.add('debugger-extension-code-line-container');
+
+      const lineGutterElement = document.createElement('div');
+      lineGutterElement.classList.add('debugger-extension-code-line-gutter');
+      lineElement.appendChild(lineGutterElement);
+      this.lineNum2Gutter[i + 1] = lineGutterElement;
+
+      const lineNumElement = document.createElement('div');
+      lineNumElement.textContent = `${i + 1}`;
+      lineNumElement.classList.add('debugger-extension-code-line-num');
+      lineElement.appendChild(lineNumElement);
+
+      const lineCodeElement = document.createElement('div');
+      lineCodeElement.classList.add('debugger-extension-code-line-code');
+      lineCodeElement.innerHTML = toHTMLEntities(line);
+      lineElement.appendChild(lineCodeElement);
+
+      this.rootDiv.appendChild(lineElement);
+    });
+  }
+
+  public setActiveLineNum(lineNum: number) {
+    if (this.activeLineNum != null && this.activeLineNum !== lineNum) {
+      this.lineNum2Gutter[this.activeLineNum].textContent = '';
+    }
+    this.activeLineNum = lineNum;
+    console.log(`this.activeLineNum = ${this.activeLineNum}`);  // DEBUG
+    this.lineNum2Gutter[lineNum].textContent = '▶';
   }
 }
 
 function main() {
   const extensionDiv =
       document.getElementById('extension-div') as HTMLDivElement;
-  const childDiv = document.createElement('div');
-  childDiv.textContent = 'Child Div';
-  extensionDiv.appendChild(childDiv);
   const codeDiv = document.createElement('div');
   codeDiv.textContent = 'Waiting for Python source code...';
   extensionDiv.appendChild(codeDiv);
 
+  let debuggerComponent: DebuggerCompoenent;
   let comm: CommHandler;
   const stepButton =
       document.getElementById('step-button') as HTMLButtonElement;
-  console.log('stepButton:', stepButton);  // DEBUG
   stepButton.addEventListener('click', () => {
-    console.log('stepButton clicked');  // DEBUG
     if (comm == null) {
       comm = new CommHandler();
 
       comm.registerCodeLinesCallback((codeLines: string[]) => {
         codeDiv.textContent = '';
-        renderCodeLines(codeDiv, codeLines);
+        debuggerComponent = new DebuggerCompoenent(codeDiv, codeLines);
+        debuggerComponent.renderCodeLines();
       });
 
-      comm.registerFrameDataCallback(incomingValue => {
-        stepButton.textContent = `Incoming value: ${JSON.stringify(incomingValue)}`;
+      comm.registerFrameDataCallback((frameData: DebuggerFrameData) => {
+        console.log('frameData:', frameData);  // DEBUG
+        if (!frameData.filename.startsWith('<ipython-input-')) {
+          return;
+        }
+        debuggerComponent.setActiveLineNum(frameData.lineno);
+        // stepButton.textContent = `Incoming value: ${JSON.stringify(incomingValue)}`;
       });
       comm.openComm();
     }

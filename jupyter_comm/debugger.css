@@ -1,0 +1,58 @@
+.debugger-extension-code-line-code {
+  background-color: rgb(240, 240, 240);
+  border-top: 1px solid rgb(200, 200, 200);
+  display: inline-block;
+  font-family: monospace;
+  font-size: 15px;
+  height: 26px;
+  line-height: normal;
+  min-height: 26px;
+  overflow: hidden;
+  transition: hover 0.1s;
+  vertical-align: middle;
+  width: calc(100% - 25px - 50px);
+}
+
+.debugger-extension-code-line-code:hover {
+  background-color: rgb(255, 255, 127);
+}
+
+.debugger-extension-code-line-container {
+  position: relative;
+  width: 100%;
+}
+
+.debugger-extension-code-line-gutter {
+  background-color: rgb(230, 230, 230);
+  border-right: 1px solid rgb(200, 200, 200);
+  border-top: 1px solid rgb(200, 200, 200);
+  color: rgb(50, 100, 255);
+  display: inline-block;
+  font-family: monospace;
+  font-size: 15px;
+  height: 26px;
+  line-height: normal;
+  min-height: 26px;
+  overflow: hidden;
+  text-align: right;
+  vertical-align: middle;
+  width: 25px;
+}
+
+.debugger-extension-code-line-num {
+  background-color: rgb(230, 230, 230);
+  border-right: 1px solid rgb(200, 200, 200);
+  border-top: 1px solid rgb(200, 200, 200);
+  color: rgb(80, 80, 80);
+  display: inline-block;
+  font-family: monospace;
+  font-size: 15px;
+  height: 26px;
+  line-height: normal;
+  min-height: 26px;
+  overflow: hidden;
+  padding-right: 10px;
+  text-align: right;
+  vertical-align: middle;
+  width: 50px;
+}
