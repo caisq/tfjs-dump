@@ -1,5 +1,9 @@
 console.log('In frontend.ts');
 
+export interface DebuggerCommand {
+  command: 'step'|'get_local_names';
+}
+
 export interface DebuggerFrameData {
   step_count: number;
 
@@ -12,6 +16,10 @@ export interface DebuggerFrameData {
   lineno: number;
 
   function_name: string;
+}
+
+export interface LocalNamesResponse {
+  local_names: string[];
 }
 
 export interface JupyterClass {
@@ -68,12 +76,15 @@ class CommHandler {
         this.codeLinesCallback(data['code_lines'] as string[]);
       } else if ('event' in data && this.frameDataCallback != null) {
         this.frameDataCallback(data as DebuggerFrameData);
+      } else if ('local_names' in data) {
+        // TODO(cais): Hook up with UI logic.
+        console.log('Local names:', data);  // DEBUG
       }
     });
   }
 
-  sendMessage(msg: {}) {
-    this.comm.send(msg);
+  sendMessage(action: DebuggerCommand) {
+    this.comm.send(action);
   }
 
   registerFrameDataCallback(callback: FrameDataCallback) {
@@ -96,12 +107,23 @@ function toHTMLEntities(str: string): string {
 
 class DebuggerCompoenent {
   private readonly rootDiv: HTMLDivElement;
+  private readonly codeDiv: HTMLDivElement;
+  private readonly watchDiv: HTMLDivElement;
   private readonly codeLines: string[];
   private lineNum2Gutter: {[lineno: number]: HTMLDivElement} = {};
   private activeLineNum: number|null = null;
 
   constructor(rootDiv: HTMLDivElement, codeLines: string[]) {
     this.rootDiv = rootDiv;
+
+    this.codeDiv = document.createElement('div');
+    this.codeDiv.classList.add('debugger-extension-code-div');
+    this.rootDiv.appendChild(this.codeDiv);
+
+    this.watchDiv = document.createElement('div');
+    this.watchDiv.classList.add('debugger-extension-watch-div')
+    this.rootDiv.appendChild(this.codeDiv);
+
     this.codeLines = codeLines;
   }
 
@@ -125,7 +147,7 @@ class DebuggerCompoenent {
       lineCodeElement.innerHTML = toHTMLEntities(line);
       lineElement.appendChild(lineCodeElement);
 
-      this.rootDiv.appendChild(lineElement);
+      this.codeDiv.appendChild(lineElement);
     });
   }
 
@@ -134,7 +156,6 @@ class DebuggerCompoenent {
       this.lineNum2Gutter[this.activeLineNum].textContent = '';
     }
     this.activeLineNum = lineNum;
-    console.log(`this.activeLineNum = ${this.activeLineNum}`);  // DEBUG
     this.lineNum2Gutter[lineNum].textContent = '▶';
   }
 }
@@ -142,9 +163,9 @@ class DebuggerCompoenent {
 function main() {
   const extensionDiv =
       document.getElementById('extension-div') as HTMLDivElement;
-  const codeDiv = document.createElement('div');
-  codeDiv.textContent = 'Waiting for Python source code...';
-  extensionDiv.appendChild(codeDiv);
+  const componentDiv = document.createElement('div');
+  componentDiv.textContent = 'Waiting for Python source code...';
+  extensionDiv.appendChild(componentDiv);
 
   let debuggerComponent: DebuggerCompoenent;
   let comm: CommHandler;
@@ -155,8 +176,8 @@ function main() {
       comm = new CommHandler();
 
       comm.registerCodeLinesCallback((codeLines: string[]) => {
-        codeDiv.textContent = '';
-        debuggerComponent = new DebuggerCompoenent(codeDiv, codeLines);
+        componentDiv.textContent = '';
+        debuggerComponent = new DebuggerCompoenent(componentDiv, codeLines);
         debuggerComponent.renderCodeLines();
       });
 
@@ -166,11 +187,12 @@ function main() {
           return;
         }
         debuggerComponent.setActiveLineNum(frameData.lineno);
+        comm.sendMessage({command: 'get_local_names'});
         // stepButton.textContent = `Incoming value: ${JSON.stringify(incomingValue)}`;
       });
       comm.openComm();
     }
-    comm.sendMessage({});
+    comm.sendMessage({command: 'step'});
   });
 }
 

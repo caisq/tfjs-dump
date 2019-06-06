@@ -23,11 +23,19 @@ class DebuggerCommHandler(object):
     def target_func(self, comm, msg):
         @comm.on_msg
         def _on_msg(msg):
-            self.step_count += 1
-            self.queue.put('step')
-            if isinstance(self.message, dict):
-                self.message['step_count'] = self.step_count
-            comm.send(self.message)
+            data = msg['content']['data']
+            with open('/tmp/dbg1.log', 'at') as f:
+                f.write('data = %s\n' % json.dumps(data))  # DEBUG
+            if data['command'] == 'step':
+                self.step_count += 1
+                self.queue.put('step')
+                if isinstance(self.message, dict):
+                    self.message['step_count'] = self.step_count
+                comm.send(self.message)
+            elif data['command'] == 'get_local_names':
+                with open('/tmp/dbg1.log', 'at') as f:
+                  f.write('Local names = %s\n' % json.dumps(list(self.f_locals.keys())))  # DEBUG
+                comm.send({'local_names': list(self.f_locals.keys())})
 
         comm.send({
             'code_lines': debugger_data['code_lines']
@@ -38,6 +46,10 @@ class DebuggerCommHandler(object):
 
     def set_message(self, message):
         self.message = message
+
+    def set_f_locals(self, f_locals):
+        self.f_locals = f_locals
+
 
 comm_handler = DebuggerCommHandler()
 get_ipython().kernel.comm_manager.register_target(
@@ -71,6 +83,7 @@ def trace_function(frame, event, arg):
             'function_name': frame.f_code.co_name,
             'lineno': frame.f_lineno
         })
+        comm_handler.set_f_locals(frame.f_locals)
 
 #         sys.settrace(None)
 #         print('Calling get_fromt_queue()')  # DEBUG

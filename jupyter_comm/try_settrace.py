@@ -12,7 +12,7 @@ def trace_function(frame, event, arg):
     print('%s @ %s (%s): Line %d' %
           (event, frame.f_code.co_filename, frame.f_code.co_name,
            frame.f_lineno))
-    print('locals:', frame.f_locals)
+    print('locals:', frame.f_locals.keys())
     input()
     return trace_function
   else:

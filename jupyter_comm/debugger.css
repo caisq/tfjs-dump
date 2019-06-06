@@ -1,3 +1,9 @@
+.debugger-extension-code-div {
+  display: inline-block;
+  position: relative;
+  width: 40%;
+}
+
 .debugger-extension-code-line-code {
   background-color: rgb(240, 240, 240);
   border-top: 1px solid rgb(200, 200, 200);
@@ -55,4 +61,10 @@
   text-align: right;
   vertical-align: middle;
   width: 50px;
+}
+
+.debugger-extension-watch-div {
+  display: inline-block;
+  position: relative;
+  width: 60%;
 }
