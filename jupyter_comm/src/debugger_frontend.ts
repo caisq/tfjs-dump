@@ -1,13 +1,17 @@
+import * as tf from '@tensorflow/tfjs-core';
+
 import {JupyterClass, JupyterCommMessage} from './jupyter_types';
 import {toHTMLEntities} from './string_utils';
-import {DebuggerWatchPanel, VariableSummary} from './watch_panel';
+import {DebuggerWatchPanel, RequestTensorFunction, TensorWireFormat, VariableSummary} from './watch_panel';
 
 declare const Jupyter: JupyterClass;
 
 console.log('In debugger_frontend.ts');  // DEBUG
 
 export interface DebuggerCommand {
-  command: 'step';
+  command: 'step' | 'get_tensor_value';
+
+  tensor_name?: string;
 }
 
 export interface DebuggerFrameData {
@@ -29,11 +33,17 @@ export interface DebuggerFrameData {
 export type CodeLinesCallback = (lines: string[]) => Promise<void>|void;
 export type FrameDataCallback =
     (frameData: DebuggerFrameData) => Promise<void>|void;
+export type TensorValueCalblack =
+    (tensorValue: TensorWireFormat) => Promise<void>|void;
+
+// A cache used for async tensor value retrieval.
+// const tensorCache: {[name: string]: TensorWireFormat} = {};
 
 class CommHandler {
   private comm: any;
   private codeLinesCallback: CodeLinesCallback|null = null;
   private frameDataCallback: FrameDataCallback|null = null;
+  private tensorValueCallback: TensorValueCalblack|null = null;
 
   constructor() {
     this.comm = null;
@@ -47,7 +57,7 @@ class CommHandler {
         'debugger_comm_target', {'foo': -1});
     // Register a message handler.
     this.comm.on_msg((msg: JupyterCommMessage) => {
-      const data = msg.content.data;
+      let data = msg.content.data;
       console.log('In on_msg(): data = ', data);  // DEBUG
       if ('code_lines' in data && this.codeLinesCallback != null) {
         this.codeLinesCallback(data['code_lines'] as string[]);
@@ -56,6 +66,12 @@ class CommHandler {
       } else if ('local_names' in data) {
         // TODO(cais): Hook up with UI logic.
         console.log('Local names:', data);  // DEBUG
+      } else if ('dtype' in data) {
+        if (this.tensorValueCallback != null) {
+          this.tensorValueCallback(data as TensorWireFormat);
+        }
+        // console.log('tensor wire format:', data);  // DEBUG
+        // tensorCache[(data as TensorWireFormat).name] = data as TensorWireFormat;
       }
     });
   }
@@ -71,19 +87,25 @@ class CommHandler {
   registerCodeLinesCallback(callback: CodeLinesCallback) {
     this.codeLinesCallback = callback;
   }
+
+  registerTensorValueCallback(callback: TensorValueCalblack) {
+    this.tensorValueCallback = callback;
+  }
 }
 
 class DebuggerCompoenent {
-  private readonly rootDiv: HTMLDivElement;
   private readonly codeDiv: HTMLDivElement;
   private readonly watchDiv: HTMLDivElement;
-  private readonly codeLines: string[];
   private lineNum2Gutter: {[lineno: number]: HTMLDivElement} = {};
   private activeLineNum: number|null = null;
 
   private watchPanel: DebuggerWatchPanel;
 
-  constructor(rootDiv: HTMLDivElement, codeLines: string[]) {
+  constructor(
+      private rootDiv: HTMLDivElement,
+      private codeLines: string[],
+      private readonly requestTensorFucntion: RequestTensorFunction
+      ) {
     this.codeLines = codeLines;
     this.rootDiv = rootDiv;
 
@@ -95,7 +117,8 @@ class DebuggerCompoenent {
     this.watchDiv.classList.add('debugger-extension-watch-panel');
     this.rootDiv.appendChild(this.watchDiv);
 
-    this.watchPanel = new DebuggerWatchPanel(this.watchDiv);
+    this.watchPanel =
+        new DebuggerWatchPanel(this.watchDiv, this.requestTensorFucntion);
   }
 
   public renderCodeLines(): void {
@@ -133,7 +156,44 @@ class DebuggerCompoenent {
   public setLocalsSummary(localsSummary: VariableSummary[]) {
     this.watchPanel.renderVariablesSummary(localsSummary);
   }
+
+  public renderTensorValue(tensorValue: TensorWireFormat) {
+    const tensor =
+        tf.tensor(tensorValue.values, tensorValue.shape, tensorValue.dtype);
+    console.log('tensor value:');  // DEBUG
+    tensor.print();  // DEBUG
+    // if (rank === 0) {
+    //     return tf.scalar(tensorValue.values as number, tensorValue.dtype);
+    // } else if (rank === 1) {
+    //     return tf.tensor1d(tensorValue.values as number[], tensorValue.dtype);
+    // } else if (rank === 2) {
+    //     return tf.tensor2d(
+    //         tensorValue.values as number[][],
+    //         tensorValue.shape as [number, number],
+    //         tensorValue.dtype);
+    // } else if (rank === 3) {
+    //     return tf.tensor3d(
+    //         tensorValue.values as number[][][],
+    //         tensorValue.shape as [number, number, number],
+    //         tensorValue.dtype);
+    // } else if (rank === 4) {
+    //     return tf.tensor4d(
+    //         tensorValue.values as number[][][][],
+    //         tensorValue.shape as [number, number, number, number],
+    //         tensorValue.dtype);
+    // } else if (rank === 5) {
+    //     return tf.tensor5d(
+    //         tensorValue.values as number[][][][][],
+    //         tensorValue.shape as
+    //             [number, number, number, number, number],
+    //         tensorValue.dtype);
+    // } else {
+    //     throw new Error(`Unsupported rank %{rank}`);
+    // }
+  }
 }
+
+
 
 function main() {
   const extensionDiv =
@@ -152,7 +212,29 @@ function main() {
 
       comm.registerCodeLinesCallback((codeLines: string[]) => {
         componentDiv.textContent = '';
-        debuggerComponent = new DebuggerCompoenent(componentDiv, codeLines);
+
+        async function requestTensorFunction(name: string) {
+          comm.sendMessage({
+            command: 'get_tensor_value',
+            tensor_name: name
+          });
+          // while (!(name in tensorCache)) {
+          //   console.log(`Polling for name ${name}`);  // DEBUG
+          //   await sleep(50);
+          // }
+          // const tensorWireFormat = tensorCache[name];
+          // delete tensorCache[name];
+          // resolve(tensorWireFormat);
+          // resolve({  // TODO(cais): Replace dummy values with real ones.
+          //   name,
+          //   dtype: 'float32',
+          //   shape: [2, 2],
+          //   values: [1, 2, 30, 40]
+          // });
+        }
+
+        debuggerComponent = new DebuggerCompoenent(
+            componentDiv, codeLines, requestTensorFunction);
         debuggerComponent.renderCodeLines();
       });
 
@@ -166,6 +248,11 @@ function main() {
           debuggerComponent.setLocalsSummary(frameData.locals_summary);
         }
       });
+
+      comm.registerTensorValueCallback(tensorValue => {
+        debuggerComponent.renderTensorValue(tensorValue);
+      });
+
       comm.openComm();
     }
     comm.sendMessage({command: 'step'});

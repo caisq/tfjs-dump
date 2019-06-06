@@ -9,10 +9,9 @@
   border-top: 1px solid rgb(200, 200, 200);
   display: inline-block;
   font-family: monospace;
-  font-size: 15px;
-  height: 26px;
-  line-height: 26px;
-  min-height: 26px;
+  font-size: 11px;
+  height: 20px;
+  line-height: 20px;
   overflow: hidden;
   transition: hover 0.1s;
   vertical-align: middle;
@@ -35,10 +34,9 @@
   color: rgb(50, 100, 255);
   display: inline-block;
   font-family: monospace;
-  font-size: 15px;
-  height: 26px;
-  line-height: 26px;
-  min-height: 26px;
+  font-size: 11px;
+  height: 20px;
+  line-height: 20px;
   overflow: hidden;
   text-align: right;
   vertical-align: middle;
@@ -52,15 +50,19 @@
   color: rgb(80, 80, 80);
   display: inline-block;
   font-family: monospace;
-  font-size: 15px;
-  height: 26px;
-  line-height: 26px;
-  min-height: 26px;
+  font-size: 11px;
+  height: 20px;
+  line-height: 20px;
   overflow: hidden;
   padding-right: 10px;
   text-align: right;
   vertical-align: middle;
   width: 50px;
+}
+
+.debugger-extensoin-tensor-view-button {
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .debugger-extension-top-level {
@@ -69,16 +71,8 @@
   vertical-align: top;
 }
 
-.debugger-extension-watch-panel {
-  border: 1px solid rgb(200, 200, 200);
-  display: inline-block;
-  /* max-height: 800px;
-  margin-left: 10px; */
-  padding-top: 0px;
-  position: relative;
-  vertical-align: top;
-  overflow: auto;
-  width: 55%;
+.debugger-extension-variable-header {
+  font-weight: bold;
 }
 
 .debugger-extension-variable-row {
@@ -106,7 +100,7 @@
   width: 100px;
 }
 
-.debugger-extension-variable-type {
+.debugger-extension-variable-snapshot {
   background-color: rgb(254, 247, 224);
   border-top: 1px solid rgb(200, 200, 200);
   color: rgb(80, 80, 80);
@@ -117,11 +111,39 @@
   overflow: hidden;
   padding-left: 3px;
   vertical-align: middle;
-  width: 450px;
+  width: 200px;
+}
+
+.debugger-extension-variable-type {
+  background-color: rgb(254, 247, 224);
+  border-top: 1px solid rgb(200, 200, 200);
+  border-right: 1px solid rgb(200, 200, 200);
+  color: rgb(80, 80, 80);
+  display: inline-block;
+  font-family: monospace;
+  font-size: 10px;
+  line-height: 18px;
+  overflow: hidden;
+  padding-left: 3px;
+  vertical-align: middle;
+  width: 250px;
 }
 
 .debugger-extension-watch-div {
   display: inline-block;
   position: relative;
+  width: 60%;
+}
+
+.debugger-extension-watch-panel {
+  border: 1px solid rgb(200, 200, 200);
+  display: inline-block;
+  height: 300px;
+  /* margin-left: 10px; */
+  max-height: 300px;
+  padding-top: 0px;
+  position: relative;
+  vertical-align: top;
+  overflow: auto;
   width: 60%;
 }

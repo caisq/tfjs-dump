@@ -19,7 +19,12 @@ def _trace(message):
         f.write('%s\n' % message)
 
 
+def _tensor_to_dtype_str(tensor):
+    return repr(tensor.dtype).replace('tf.', '')
+
+
 def _get_locals_summary(f_locals):
+    # TODO(cais): Add unit tests.
     locals_summary = []
     for local_name in f_locals.keys():
         if local_name.startswith('__'):
@@ -27,9 +32,33 @@ def _get_locals_summary(f_locals):
         elif local_name in (
             '_ih', '_dh', '_oh', '_', '_i', '_ii', '_iii', '_i1', '_i2', '_i3'):
             continue
+
+        value = f_locals[local_name]
+        snapshot = None
+        if isinstance(value, int):
+            snapshot = '%d' % value
+        elif isinstance(value, float):
+            if abs(value) > 1e-2:
+                snapshot = '%.3f' % value
+            else:
+                snapshot = '%.3e' % value
+        elif isinstance(value, str):
+            STR_LENGTH_LIM = 40
+            if len(value) > STR_LENGTH_LIM:
+                snapshot = '"' + value[: STR_LENGTH_LIM] + '...' + '"'
+            else:
+                snapshot = '"' + value + '"'
+
+        is_tensor = isinstance(value, tf.Tensor)
+        if is_tensor:
+            dtype_str = _tensor_to_dtype_str(value)
+            snapshot = '%s-%s' % (value.shape, dtype_str)
+
         locals_summary.append({
             'name': local_name,
-            'type': str(type(f_locals[local_name]))
+            'type': str(type(value)),
+            'snapshot': snapshot,
+            'is_tensor': is_tensor
         })
     return locals_summary
 
@@ -46,7 +75,8 @@ class DebuggerCommHandler(object):
         def _on_msg(msg):
             data = msg['content']['data']
             _trace('data = %s' % json.dumps(data))  # DEBUG
-            if data['command'] == 'step':
+            command = data['command']
+            if command == 'step':
                 self.step_count += 1
                 self.queue.put('step')
                 if isinstance(self.message, dict):
@@ -55,8 +85,20 @@ class DebuggerCommHandler(object):
                 locals_summary = _get_locals_summary(self.f_locals)
                 _trace('Locals summary = %s' % json.dumps(locals_summary))
                 response_message['locals_summary'] = locals_summary
-                # _trace('Local names = %s' % json.dumps(list(self.f_locals.keys())))  # DEBUG
+
                 comm.send(response_message)
+            elif command == 'get_tensor_value':
+                # TODO(cais): Better error handling.
+                tensor_name = data['tensor_name']
+                _trace('get_tensor_value: tenosr_name = %s' % tensor_name)
+                tensor = self.f_locals[tensor_name]
+                comm.send({
+                    'name': tensor_name,
+                    'dtype': _tensor_to_dtype_str(tensor),
+                    'shape': tensor.shape.as_list(),
+                    'values': tensor.numpy().tolist()
+                })
+                # TODO(cais): Need more efficient way of handling large tensors.
             else:
                 raise Error('Unknown command %s' % data['command'])
 
