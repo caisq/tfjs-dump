@@ -1,4 +1,9 @@
-console.log('In frontend.ts');
+import {JupyterClass, JupyterCommMessage} from './jupyter_types';
+import {toHTMLEntities} from './string_utils';
+
+declare const Jupyter: JupyterClass;
+
+console.log('In debugger_frontend.ts');  // DEBUG
 
 export interface DebuggerFrameData {
   step_count: number;
@@ -12,32 +17,6 @@ export interface DebuggerFrameData {
   lineno: number;
 
   function_name: string;
-}
-
-export interface JupyterClass {
-  notebook: JupyterNotebook;
-}
-
-export interface JupyterNotebook {
-  kernel: JupyterNotebookKernel;
-}
-
-export interface JupyterNotebookKernel {
-  comm_manager: JupyterNotebookCommManager;
-}
-
-export interface JupyterNotebookCommManager {
-  new_comm: (name: string, message: {}) => any;
-}
-
-declare const Jupyter: JupyterClass;
-
-export interface JupyterCommMessage {
-  content: JupyterCommMessageData;
-}
-
-export interface JupyterCommMessageData {
-  data: {};
 }
 
 export type CodeLinesCallback = (lines: string[]) => Promise<void>|void;
@@ -83,15 +62,6 @@ class CommHandler {
   registerCodeLinesCallback(callback: CodeLinesCallback) {
     this.codeLinesCallback = callback;
   }
-}
-
-function toHTMLEntities(str: string): string {
-  return String(str)
-      .replace(/ /g, '&nbsp;')
-      // .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
 }
 
 class DebuggerCompoenent {

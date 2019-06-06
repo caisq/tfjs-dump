@@ -2,17 +2,13 @@
     "name": "jupyter-comm",
     "version": "0.0.0",
     "scripts": {
-      "test": "jest",
-      "build": "tsc"
+      "build": "webpack"
     },
-    "keywords": [
-      "typescript",
-      "npm",
-      "boilerplate",
-      "library"
-    ],
     "author": "Shanqing Cai",
     "devDependencies": {
-      "typescript": "^3.5.1"
+      "ts-loader": "^6.0.2",
+      "typescript": "^3.5.1",
+      "webpack": "^4.33.0",
+      "webpack-cli": "^3.3.2"
     }
   }
