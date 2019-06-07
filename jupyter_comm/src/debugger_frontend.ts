@@ -1,4 +1,5 @@
 import * as tf from '@tensorflow/tfjs-core';
+import * as tensorWidget from 'tensor-widget';
 
 import {JupyterClass, JupyterCommMessage} from './jupyter_types';
 import {toHTMLEntities} from './string_utils';
@@ -161,39 +162,12 @@ class DebuggerCompoenent {
     const tensor =
         tf.tensor(tensorValue.values, tensorValue.shape, tensorValue.dtype);
     console.log('tensor value:');  // DEBUG
-    tensor.print();  // DEBUG
-    // if (rank === 0) {
-    //     return tf.scalar(tensorValue.values as number, tensorValue.dtype);
-    // } else if (rank === 1) {
-    //     return tf.tensor1d(tensorValue.values as number[], tensorValue.dtype);
-    // } else if (rank === 2) {
-    //     return tf.tensor2d(
-    //         tensorValue.values as number[][],
-    //         tensorValue.shape as [number, number],
-    //         tensorValue.dtype);
-    // } else if (rank === 3) {
-    //     return tf.tensor3d(
-    //         tensorValue.values as number[][][],
-    //         tensorValue.shape as [number, number, number],
-    //         tensorValue.dtype);
-    // } else if (rank === 4) {
-    //     return tf.tensor4d(
-    //         tensorValue.values as number[][][][],
-    //         tensorValue.shape as [number, number, number, number],
-    //         tensorValue.dtype);
-    // } else if (rank === 5) {
-    //     return tf.tensor5d(
-    //         tensorValue.values as number[][][][][],
-    //         tensorValue.shape as
-    //             [number, number, number, number, number],
-    //         tensorValue.dtype);
-    // } else {
-    //     throw new Error(`Unsupported rank %{rank}`);
-    // }
+    tensor.print();
+    console.log(tensorWidget);  // DEBUG
+    this.watchPanel.renderTensor(tensor);
+    // TODO(cais): Tensor disposal.
   }
 }
-
-
 
 function main() {
   const extensionDiv =
@@ -218,19 +192,6 @@ function main() {
             command: 'get_tensor_value',
             tensor_name: name
           });
-          // while (!(name in tensorCache)) {
-          //   console.log(`Polling for name ${name}`);  // DEBUG
-          //   await sleep(50);
-          // }
-          // const tensorWireFormat = tensorCache[name];
-          // delete tensorCache[name];
-          // resolve(tensorWireFormat);
-          // resolve({  // TODO(cais): Replace dummy values with real ones.
-          //   name,
-          //   dtype: 'float32',
-          //   shape: [2, 2],
-          //   values: [1, 2, 30, 40]
-          // });
         }
 
         debuggerComponent = new DebuggerCompoenent(

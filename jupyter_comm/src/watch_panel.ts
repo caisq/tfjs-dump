@@ -1,3 +1,6 @@
+import {Tensor} from '@tensorflow/tfjs-core';
+import * as tensorWidget from 'tensor-widget';
+
 import {toHTMLEntities} from "./string_utils";
 
 /** Summary of a single variable. */
@@ -43,15 +46,24 @@ export function formatTypeNameForDisplay(typeName: string): string {
 export type RequestTensorFunction = (name: string) => Promise<void>;
 
 export class DebuggerWatchPanel {
+    private variabeListPanel: HTMLDivElement;
+    private tensorWidgetPanel: HTMLDivElement;
+
     constructor(
         private readonly rootDiv: HTMLDivElement,
-        private readonly retrieveTensorFunction: RequestTensorFunction) {}
+        private readonly retrieveTensorFunction: RequestTensorFunction) {
+        this.variabeListPanel = document.createElement('div');
+        this.rootDiv.appendChild(this.variabeListPanel);
+        this.tensorWidgetPanel = document.createElement('div');
+        this.tensorWidgetPanel.classList.add('debugger-extension-tensor-widget-panel');
+        this.rootDiv.appendChild(this.tensorWidgetPanel);
+    }
 
     public renderVariablesSummary(summary: VariableSummary[]) {
         console.log('renderVariablesSummary:', summary);  // DEBUG
         // Clear the div.
-        while(this.rootDiv.firstChild != null) {
-            this.rootDiv.removeChild(this.rootDiv.firstChild);
+        while(this.variabeListPanel.firstChild != null) {
+            this.variabeListPanel.removeChild(this.variabeListPanel.firstChild);
         }
         this.addHeaderRow();
 
@@ -73,7 +85,8 @@ export class DebuggerWatchPanel {
             snapshotDiv.classList.add('debugger-extension-variable-snapshot');
             if (variable.is_tensor) {
                 const viewButton = document.createElement('a');
-                viewButton.classList.add('debugger-extensoin-tensor-view-button');
+                viewButton.classList.add(
+                    'debugger-extensoin-tensor-view-button');
                 viewButton.textContent = variable.snapshot;
                 viewButton.addEventListener('click', async () => {
                     this.requestTensorValue(variable.name);
@@ -89,7 +102,7 @@ export class DebuggerWatchPanel {
             }
             variableDiv.appendChild(snapshotDiv);
 
-            this.rootDiv.appendChild(variableDiv);
+            this.variabeListPanel.appendChild(variableDiv);
         });
     }
 
@@ -122,6 +135,13 @@ export class DebuggerWatchPanel {
         snapshotDiv.textContent = 'Value';
         variableHeaderRow.appendChild(snapshotDiv);
 
-        this.rootDiv.appendChild(variableHeaderRow);
+        this.variabeListPanel.appendChild(variableHeaderRow);
+    }
+
+    public renderTensor(tensor: Tensor) {
+        while (this.tensorWidgetPanel.firstChild) {
+            this.tensorWidgetPanel.removeChild(this.tensorWidgetPanel.firstChild);
+        }
+        new tensorWidget.TensorVisPanel(this.tensorWidgetPanel, tensor);
     }
 }

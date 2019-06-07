@@ -65,6 +65,11 @@
   text-decoration: underline;
 }
 
+.debugger-extension-tensor-widget-panel {
+  height: 300px;
+  width: 500px;
+}
+
 .debugger-extension-top-level {
   max-height: 800px;
   overflow-y: auto;
@@ -138,12 +143,12 @@
 .debugger-extension-watch-panel {
   border: 1px solid rgb(200, 200, 200);
   display: inline-block;
-  height: 300px;
-  /* margin-left: 10px; */
-  max-height: 300px;
+  height: 4600px;
+  margin-left: 10px;
+  max-height: 400px;
   padding-top: 0px;
   position: relative;
   vertical-align: top;
   overflow: auto;
-  width: 60%;
+  width: calc(60% - 12px);
 }
