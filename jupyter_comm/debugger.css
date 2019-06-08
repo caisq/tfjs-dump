@@ -66,8 +66,10 @@
 }
 
 .debugger-extension-tensor-widget-panel {
+  border: 1px solid rgb(220, 220, 220);
   height: 300px;
-  width: 500px;
+  margin-top: 5px;
+  width: 550px;
 }
 
 .debugger-extension-top-level {
@@ -78,6 +80,7 @@
 
 .debugger-extension-variable-header {
   font-weight: bold;
+  white-space: nowrap;
 }
 
 .debugger-extension-variable-row {
@@ -87,7 +90,17 @@
   margin-top: 0px;
   min-height: 18px;
   padding-top: 0px;
+  white-space: nowrap;
   width: 550px;
+}
+
+.debugger-extension-tensor-variable-list {
+  border: 1px solid rgb(200, 200, 200);
+  height: 280px;
+  max-height: 280px;
+  overflow-y: auto;
+  position: relative;
+  width: 100%;
 }
 
 .debugger-extension-variable-name {
@@ -116,7 +129,7 @@
   overflow: hidden;
   padding-left: 3px;
   vertical-align: middle;
-  width: 200px;
+  width: 195px;
 }
 
 .debugger-extension-variable-type {
@@ -143,9 +156,9 @@
 .debugger-extension-watch-panel {
   border: 1px solid rgb(200, 200, 200);
   display: inline-block;
-  height: 4600px;
+  height: 600px;
   margin-left: 10px;
-  max-height: 400px;
+  max-height: 600px;
   padding-top: 0px;
   position: relative;
   vertical-align: top;

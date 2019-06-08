@@ -6,8 +6,7 @@
     },
     "author": "Shanqing Cai",
     "dependencies": {
-      "@tensorflow/tfjs-core": "^1.2.0",
-      "tensor-vis": "0.0.1"
+      "@tensorflow/tfjs-core": "^1.2.0"
     },
     "devDependencies": {
       "ts-loader": "^6.0.2",

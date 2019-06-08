@@ -1,5 +1,4 @@
 import * as tf from '@tensorflow/tfjs-core';
-import * as tensorWidget from 'tensor-widget';
 
 import {JupyterClass, JupyterCommMessage} from './jupyter_types';
 import {toHTMLEntities} from './string_utils';
@@ -59,14 +58,14 @@ class CommHandler {
     // Register a message handler.
     this.comm.on_msg((msg: JupyterCommMessage) => {
       let data = msg.content.data;
-      console.log('In on_msg(): data = ', data);  // DEBUG
+      // console.log('In on_msg(): data = ', data);  // DEBUG
       if ('code_lines' in data && this.codeLinesCallback != null) {
         this.codeLinesCallback(data['code_lines'] as string[]);
       } else if ('event' in data && this.frameDataCallback != null) {
         this.frameDataCallback(data as DebuggerFrameData);
       } else if ('local_names' in data) {
         // TODO(cais): Hook up with UI logic.
-        console.log('Local names:', data);  // DEBUG
+        // console.log('Local names:', data);  // DEBUG
       } else if ('dtype' in data) {
         if (this.tensorValueCallback != null) {
           this.tensorValueCallback(data as TensorWireFormat);
@@ -161,9 +160,6 @@ class DebuggerCompoenent {
   public renderTensorValue(tensorValue: TensorWireFormat) {
     const tensor =
         tf.tensor(tensorValue.values, tensorValue.shape, tensorValue.dtype);
-    console.log('tensor value:');  // DEBUG
-    tensor.print();
-    console.log(tensorWidget);  // DEBUG
     this.watchPanel.renderTensor(tensor);
     // TODO(cais): Tensor disposal.
   }

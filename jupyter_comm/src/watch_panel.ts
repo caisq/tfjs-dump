@@ -46,24 +46,24 @@ export function formatTypeNameForDisplay(typeName: string): string {
 export type RequestTensorFunction = (name: string) => Promise<void>;
 
 export class DebuggerWatchPanel {
-    private variabeListPanel: HTMLDivElement;
+    private variableListPanel: HTMLDivElement;
     private tensorWidgetPanel: HTMLDivElement;
 
     constructor(
         private readonly rootDiv: HTMLDivElement,
         private readonly retrieveTensorFunction: RequestTensorFunction) {
-        this.variabeListPanel = document.createElement('div');
-        this.rootDiv.appendChild(this.variabeListPanel);
+        this.variableListPanel = document.createElement('div');
+        this.variableListPanel.classList.add('debugger-extension-tensor-variable-list');
+        this.rootDiv.appendChild(this.variableListPanel);
         this.tensorWidgetPanel = document.createElement('div');
         this.tensorWidgetPanel.classList.add('debugger-extension-tensor-widget-panel');
         this.rootDiv.appendChild(this.tensorWidgetPanel);
     }
 
     public renderVariablesSummary(summary: VariableSummary[]) {
-        console.log('renderVariablesSummary:', summary);  // DEBUG
         // Clear the div.
-        while(this.variabeListPanel.firstChild != null) {
-            this.variabeListPanel.removeChild(this.variabeListPanel.firstChild);
+        while(this.variableListPanel.firstChild != null) {
+            this.variableListPanel.removeChild(this.variableListPanel.firstChild);
         }
         this.addHeaderRow();
 
@@ -102,7 +102,7 @@ export class DebuggerWatchPanel {
             }
             variableDiv.appendChild(snapshotDiv);
 
-            this.variabeListPanel.appendChild(variableDiv);
+            this.variableListPanel.appendChild(variableDiv);
         });
     }
 
@@ -135,7 +135,7 @@ export class DebuggerWatchPanel {
         snapshotDiv.textContent = 'Value';
         variableHeaderRow.appendChild(snapshotDiv);
 
-        this.variabeListPanel.appendChild(variableHeaderRow);
+        this.variableListPanel.appendChild(variableHeaderRow);
     }
 
     public renderTensor(tensor: Tensor) {

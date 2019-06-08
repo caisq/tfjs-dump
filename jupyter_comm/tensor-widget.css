@@ -3,6 +3,7 @@
     font-size: 14px;
     overflow-x: hidden;
     overflow-y: hidden;
+    position: relative;
 }
 
 .tensor-vis-panel-header {
@@ -134,6 +135,8 @@
 
 .tensor-vis-left-scroll-group {
     display: inline-block;
+    position: absolute;
+    top: 92px;
 }
 
 /* .tensor-vis-main-region {
@@ -329,7 +332,6 @@
 .slider-left {
     display: block;
     -webkit-appearance: slider-vertical;
-    width: 20px;  /* TODO(cais): Calculate based on parent height. */
     background: #d3d3d3;
     outline: none;
     transform: rotate(180deg);
