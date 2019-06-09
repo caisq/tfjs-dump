@@ -1,7 +1,7 @@
 import * as tf from '@tensorflow/tfjs-core';
 
 import {JupyterClass, JupyterCommMessage} from './jupyter_types';
-import {toHTMLEntities} from './string_utils';
+import {convertLeadingEntities} from './string_utils';
 import {DebuggerWatchPanel, RequestTensorFunction, TensorWireFormat, VariableSummary} from './watch_panel';
 
 declare const Jupyter: JupyterClass;
@@ -30,7 +30,7 @@ export interface DebuggerFrameData {
   locals_summary?: VariableSummary[];
 }
 
-export type CodeLinesCallback = (lines: string[]) => Promise<void>|void;
+export type CodeHtmlCallback = (htmlText: string) => Promise<void>|void;
 export type FrameDataCallback =
     (frameData: DebuggerFrameData) => Promise<void>|void;
 export type TensorValueCalblack =
@@ -41,7 +41,7 @@ export type TensorValueCalblack =
 
 class CommHandler {
   private comm: any;
-  private codeLinesCallback: CodeLinesCallback|null = null;
+  private codeHtmlCallback: CodeHtmlCallback|null = null;
   private frameDataCallback: FrameDataCallback|null = null;
   private tensorValueCallback: TensorValueCalblack|null = null;
 
@@ -59,8 +59,8 @@ class CommHandler {
     this.comm.on_msg((msg: JupyterCommMessage) => {
       let data = msg.content.data;
       // console.log('In on_msg(): data = ', data);  // DEBUG
-      if ('code_lines' in data && this.codeLinesCallback != null) {
-        this.codeLinesCallback(data['code_lines'] as string[]);
+      if ('code_html' in data && this.codeHtmlCallback != null) {
+        this.codeHtmlCallback(data['code_html'] as string);
       } else if ('event' in data && this.frameDataCallback != null) {
         this.frameDataCallback(data as DebuggerFrameData);
       } else if ('local_names' in data) {
@@ -84,8 +84,8 @@ class CommHandler {
     this.frameDataCallback = callback;
   }
 
-  registerCodeLinesCallback(callback: CodeLinesCallback) {
-    this.codeLinesCallback = callback;
+  registerCodeLinesCallback(callback: CodeHtmlCallback) {
+    this.codeHtmlCallback = callback;
   }
 
   registerTensorValueCallback(callback: TensorValueCalblack) {
@@ -93,6 +93,7 @@ class CommHandler {
   }
 }
 
+// TODO(cais): Refactor into a separate file.
 class DebuggerCompoenent {
   private readonly codeDiv: HTMLDivElement;
   private readonly watchDiv: HTMLDivElement;
@@ -101,16 +102,22 @@ class DebuggerCompoenent {
 
   private watchPanel: DebuggerWatchPanel;
 
+  // TODO(cais): In addition to indexing by lineno, we also need to
+  // index by file name at a higher level.
+  private linenoToTokenNameToSpan:
+      {[lineno: number]: {[tokenName: string]: HTMLSpanElement}} = {};
+  private activeTensorTokensSpans: {[tokenName: string]: HTMLSpanElement[]} = {};
+
   constructor(
       private rootDiv: HTMLDivElement,
-      private codeLines: string[],
-      private readonly requestTensorFucntion: RequestTensorFunction
-      ) {
-    this.codeLines = codeLines;
+      private codeHtml: string,
+      private readonly requestTensorFucntion: RequestTensorFunction) {
+    this.codeHtml = codeHtml;
     this.rootDiv = rootDiv;
 
     this.codeDiv = document.createElement('div');
     this.codeDiv.classList.add('debugger-extension-code-div');
+    this.codeDiv.classList.add('highlight');
     this.rootDiv.appendChild(this.codeDiv);
 
     this.watchDiv = document.createElement('div');
@@ -122,7 +129,8 @@ class DebuggerCompoenent {
   }
 
   public renderCodeLines(): void {
-    this.codeLines.forEach((line, i) => {
+    const htmlLines = this.codeHtml.split('\n');
+    htmlLines.forEach((line, i) => {
       const lineElement = document.createElement('div');
       lineElement.classList.add('debugger-extension-code-line-container');
 
@@ -132,13 +140,17 @@ class DebuggerCompoenent {
       this.lineNum2Gutter[i + 1] = lineGutterElement;
 
       const lineNumElement = document.createElement('div');
-      lineNumElement.textContent = `${i + 1}`;
+      const lineno = i +  1;
+      lineNumElement.textContent = `${lineno}`;
       lineNumElement.classList.add('debugger-extension-code-line-num');
       lineElement.appendChild(lineNumElement);
 
       const lineCodeElement = document.createElement('div');
       lineCodeElement.classList.add('debugger-extension-code-line-code');
-      lineCodeElement.innerHTML = toHTMLEntities(line);
+      console.log(`Adding line: "${line}"`);  // DEBUG
+      lineCodeElement.innerHTML = convertLeadingEntities(line);
+
+      this.collectLexerTokenSpans(lineno, lineCodeElement);
       lineElement.appendChild(lineCodeElement);
 
       this.codeDiv.appendChild(lineElement);
@@ -155,13 +167,73 @@ class DebuggerCompoenent {
 
   public setLocalsSummary(localsSummary: VariableSummary[]) {
     this.watchPanel.renderVariablesSummary(localsSummary);
+
+    // Highlight tensors in the code div.
+    const activeTensorTokenNames: string[] = [];
+    localsSummary.forEach(varSummary => {
+      if (varSummary.is_tensor) {
+        activeTensorTokenNames.push(varSummary.name);
+      }
+    });
+    // TODO(cais): For frames with event = enter, f_locals may not be correct.
+
+    for (const lineno in this.linenoToTokenNameToSpan) {
+      for (const tokenName in this.linenoToTokenNameToSpan[lineno]) {
+        // TODO(cais): Need a lineToFuncion map and make sure that the function
+        // of the line that corresponds to `lineno` matches the current function
+        // scope. This is important for cases where there are multiple functions
+        // containing the same variable names.
+        if (activeTensorTokenNames.indexOf(tokenName) !== -1) {
+          const span = this.linenoToTokenNameToSpan[lineno][tokenName];
+          span.classList.add('active-tensor');
+          span.addEventListener('click', () => {
+            this.requestTensorFucntion(tokenName);
+          });
+          if (this.activeTensorTokensSpans[tokenName] == null) {
+            this.activeTensorTokensSpans[tokenName] = [];
+          }
+          this.activeTensorTokensSpans[tokenName].push(span);
+        }
+      }
+    }
+
+    // Remove the active-tensor status of tensors that are no longer active.
+    for (const tokenName in this.activeTensorTokensSpans) {
+      if (activeTensorTokenNames.indexOf(tokenName) === -1) {
+        this.activeTensorTokensSpans[tokenName].forEach(span => {
+          span.classList.remove ('active-tensor');
+          // TODO(cais): Remove click event listener.
+        })
+        delete this.activeTensorTokensSpans[tokenName];
+      }
+    }
   }
 
   public renderTensorValue(tensorValue: TensorWireFormat) {
     const tensor =
         tf.tensor(tensorValue.values, tensorValue.shape, tensorValue.dtype);
     this.watchPanel.renderTensor(tensor);
-    // TODO(cais): Tensor disposal.
+    // TODO(cais): Tensor disposal. Prevent memory leaks.
+  }
+
+  /**
+   * Collect a map for tokens as spans.
+   */
+  private collectLexerTokenSpans(
+      lineno: number, lineCodeElement: HTMLDivElement) {
+    lineCodeElement.childNodes.forEach(element => {
+      if (element instanceof HTMLSpanElement) {
+        if (element.classList.contains('n')) {
+          if (!(lineno in this.linenoToTokenNameToSpan)) {
+            this.linenoToTokenNameToSpan[lineno] = {};
+          }
+          const tokenName = element.textContent;
+          if (tokenName != null) {
+            this.linenoToTokenNameToSpan[lineno][tokenName] = element;
+          }
+        }
+      }
+    });
   }
 }
 
@@ -180,7 +252,7 @@ function main() {
     if (comm == null) {
       comm = new CommHandler();
 
-      comm.registerCodeLinesCallback((codeLines: string[]) => {
+      comm.registerCodeLinesCallback((codeHtml: string) => {
         componentDiv.textContent = '';
 
         async function requestTensorFunction(name: string) {
@@ -191,12 +263,11 @@ function main() {
         }
 
         debuggerComponent = new DebuggerCompoenent(
-            componentDiv, codeLines, requestTensorFunction);
+            componentDiv, codeHtml, requestTensorFunction);
         debuggerComponent.renderCodeLines();
       });
 
       comm.registerFrameDataCallback((frameData: DebuggerFrameData) => {
-        // console.log('frameData:', frameData);  // DEBUG
         if (!frameData.filename.startsWith('<ipython-input-')) {
           return;
         }

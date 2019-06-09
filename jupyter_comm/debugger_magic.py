@@ -4,6 +4,10 @@ import json
 import os
 import sys
 
+from pygments import highlight
+from pygments.lexers import PythonLexer
+from pygments.formatters import HtmlFormatter
+
 import IPython
 from IPython import display
 from ipykernel.comm import Comm
@@ -102,9 +106,7 @@ class DebuggerCommHandler(object):
             else:
                 raise Error('Unknown command %s' % data['command'])
 
-        comm.send({
-            'code_lines': debugger_data['code_lines']
-        })
+        comm.send(debugger_data)
 
     def get_from_queue(self):
         return self.queue.get()
@@ -122,7 +124,8 @@ get_ipython().kernel.comm_manager.register_target(
 
 
 debugger_data = {
-    'code_lines': []
+    'code_lines': [],
+    'code_html': None
 }
 
 
@@ -188,6 +191,12 @@ def debugger_magic(line, cell):
 
     revised_code = cell
     debugger_data['code_lines'] = cell.split('\n')
+
+    # Use Pygment lexer and formatter
+    code_html = highlight(
+        cell, PythonLexer(),
+        HtmlFormatter(lineno='inline', nowrap=True))
+    debugger_data['code_html'] = code_html
 
     def thread_target():
         sys.settrace(trace_function)
