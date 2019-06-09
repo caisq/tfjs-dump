@@ -54,13 +54,15 @@ class CommHandler {
       throw new Error('Jupyter notebook kernel is not available.');
     }
     this.comm = Jupyter.notebook.kernel.comm_manager.new_comm(
-        'debugger_comm_target', {'foo': -1});
+        'debugger_comm_target', {});
     // Register a message handler.
     this.comm.on_msg((msg: JupyterCommMessage) => {
       let data = msg.content.data;
       // console.log('In on_msg(): data = ', data);  // DEBUG
       if ('code_html' in data && this.codeHtmlCallback != null) {
         this.codeHtmlCallback(data['code_html'] as string);
+
+        // This is the initial connect. Automatically step
       } else if ('event' in data && this.frameDataCallback != null) {
         this.frameDataCallback(data as DebuggerFrameData);
       } else if ('local_names' in data) {
@@ -147,7 +149,6 @@ class DebuggerCompoenent {
 
       const lineCodeElement = document.createElement('div');
       lineCodeElement.classList.add('debugger-extension-code-line-code');
-      console.log(`Adding line: "${line}"`);  // DEBUG
       lineCodeElement.innerHTML = convertLeadingEntities(line);
 
       this.collectLexerTokenSpans(lineno, lineCodeElement);
@@ -245,44 +246,53 @@ function main() {
   extensionDiv.appendChild(componentDiv);
 
   let debuggerComponent: DebuggerCompoenent;
-  let comm: CommHandler;
   const stepButton =
       document.getElementById('step-button') as HTMLButtonElement;
-  stepButton.addEventListener('click', () => {
-    if (comm == null) {
-      comm = new CommHandler();
 
-      comm.registerCodeLinesCallback((codeHtml: string) => {
-        componentDiv.textContent = '';
+  // The comm objec that underlies the debugger.
+  // TODO(cais): Handle the case in which the debugger magic is executed
+  // more than once for the same Jupyter cell.
+  const comm = new CommHandler();
 
-        async function requestTensorFunction(name: string) {
-          comm.sendMessage({
-            command: 'get_tensor_value',
-            tensor_name: name
-          });
-        }
-
-        debuggerComponent = new DebuggerCompoenent(
-            componentDiv, codeHtml, requestTensorFunction);
-        debuggerComponent.renderCodeLines();
+  // Register the callback for code lines.
+  comm.registerCodeLinesCallback((codeHtml: string) => {
+    componentDiv.textContent = '';
+    async function requestTensorFunction(name: string) {
+      comm.sendMessage({
+        command: 'get_tensor_value',
+        tensor_name: name
       });
-
-      comm.registerFrameDataCallback((frameData: DebuggerFrameData) => {
-        if (!frameData.filename.startsWith('<ipython-input-')) {
-          return;
-        }
-        debuggerComponent.setActiveLineNum(frameData.lineno);
-        if (frameData.locals_summary != null) {
-          debuggerComponent.setLocalsSummary(frameData.locals_summary);
-        }
-      });
-
-      comm.registerTensorValueCallback(tensorValue => {
-        debuggerComponent.renderTensorValue(tensorValue);
-      });
-
-      comm.openComm();
     }
+
+    debuggerComponent = new DebuggerCompoenent(
+        componentDiv, codeHtml, requestTensorFunction);
+    debuggerComponent.renderCodeLines();
+  });
+
+  // Register the callback for Python debugger frames.
+  comm.registerFrameDataCallback((frameData: DebuggerFrameData) => {
+    if (!frameData.filename.startsWith('<ipython-input-')) {
+      return;
+    }
+    debuggerComponent.setActiveLineNum(frameData.lineno);
+    if (frameData.locals_summary != null) {
+      debuggerComponent.setLocalsSummary(frameData.locals_summary);
+    }
+  });
+
+  // Register the callback for TensorFlow (eager) Tensor values.
+  comm.registerTensorValueCallback(tensorValue => {
+    debuggerComponent.renderTensorValue(tensorValue);
+  });
+
+  // Open the debugger's underlying comm.
+  comm.openComm();
+
+  // Initial step, so that the debugger can stop at the first line
+  // of the cell.
+  comm.sendMessage({command: 'step'});
+
+  stepButton.addEventListener('click', () => {
     comm.sendMessage({command: 'step'});
   });
 }

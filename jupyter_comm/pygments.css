@@ -70,6 +70,7 @@
 
 /* TF Debugger specific. */
 .highlight .n.active-tensor {
+  color: magenta;
   cursor: pointer;
   font-weight: bold;
   text-decoration: underline;
