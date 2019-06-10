@@ -138,10 +138,27 @@ debugger_data = {
 }
 
 
+# Debugger state control.
+debugger_state = {
+    # 'any'  - Used for "step in" action.
+    # 'over' - Step until the next 'line' event of exactly the same stack
+    #          or a shorter stack.
+    'next_pause': 'any',  # 'any' | 'over'
+    'current_stack': []
+}
+
 def trace_function(frame, event, arg):
+    # TODO(cais): Handle event == 'exception'.
+
+    if event == 'call':
+        debugger_state['current_stack'].append(frame.f_code.co_name)
+    elif event == 'return':
+        debugger_state['current_stack'].pop()
 
     if frame.f_code.co_name == 'target_func':
-        return None
+        if event == 'call':
+            debugger_state['current_stack'].pop()
+        return
     # elif (event == 'line' and
     elif frame.f_code.co_filename.startswith('<ipython-input-'):
         if event in ('call', 'return'):
@@ -166,13 +183,16 @@ def trace_function(frame, event, arg):
             }
             comm_handler.put_to_trace_queue((frame_message, frame.f_locals))
 
-            _trace('Pausing: event=%s, lineno=%d' %
-                   (event, frame.f_lineno))  # DEBUG
+            _trace('Pausing: stack=%s, event=%s, lineno=%d' %
+                   (debugger_state['current_stack'], event,
+                    frame.f_lineno))  # DEBUG
             comm_handler.get_from_client_queue()
 
             return trace_function
     else:
-        return None
+        if event == 'call':
+            debugger_state['current_stack'].pop()
+        return
 
 
 class MyEventLoopPolicy(asyncio.DefaultEventLoopPolicy):

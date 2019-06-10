@@ -6,17 +6,32 @@ import tensorflow as tf
 tf.enable_eager_execution()
 
 
+current_stack = []
+
+
 def trace_function(frame, event, arg):
 
+  if event == 'call':
+    current_stack.append(frame.f_code.co_name)
+  elif event == 'return':
+    current_stack.pop()
+
   if '__file__' in globals() and frame.f_code.co_filename == __file__:
+    print(current_stack)  # DEBUG
     print('%s @ %s (%s): Line %d' %
           (event, frame.f_code.co_filename, frame.f_code.co_name,
            frame.f_lineno))
+    # if frame.f_trace:
+    #   sys.settrace(None)
+    #   print(frame.f_trace(frame, event, arg))
+    #   sys.settrace(trace_function)
     print('locals:', frame.f_locals.keys())
     input()
     return trace_function
   else:
-    return None
+    if event == 'call':
+      current_stack.pop()
+    return
 
 
 def _add_one(x):
