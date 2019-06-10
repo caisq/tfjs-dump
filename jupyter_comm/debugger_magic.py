@@ -75,10 +75,6 @@ class DebuggerCommHandler(object):
         _trace('---- Initializing comm ----')  # DEBUG
         self.step_count = 0
         self.client_queue = queue.Queue()
-        # TODO(cais): Remove.
-        # self.message = 'Empty message'
-        # Each element of the trace queue has the format:
-        #     (frame_info, f_locals).
         self.trace_queue = queue.Queue(1)
         self.comm = None
         self.frame_message = None
@@ -90,15 +86,12 @@ class DebuggerCommHandler(object):
         @comm.on_msg
         def _on_msg(msg):
             data = msg['content']['data']
-            # _trace('data = %s' % json.dumps(data))  # DEBUG
             command = data['command']
             if command == 'step':
                 if self.step_count == 0:
                     # Consume the initial debugger frame.
                     comm_handler.get_from_trace_queue_and_send_response()
 
-                _trace('Received step command: step count = %d, calling get()' %
-                       self.step_count)  # DEBUG
                 self.step_count += 1
                 self.client_queue.put('step')
                 self.get_from_trace_queue_and_send_response()
@@ -127,19 +120,12 @@ class DebuggerCommHandler(object):
 
     def get_from_trace_queue_and_send_response(self):
         (self.frame_message, self.f_locals) = self.trace_queue.get()
-        _trace('get_from_trace_queue() returned')  # DEBUG
         if isinstance(self.frame_message, dict): # TODO(cais): Is this necessary?
             self.frame_message['step_count'] = self.step_count
         response_message = copy.copy(self.frame_message)
         locals_summary = _get_locals_summary(self.f_locals)
         response_message['locals_summary'] = locals_summary
         self.comm.send(response_message)
-
-    # TODO(cais): Remove.
-    # def set_message(self, message):
-    #     self.message = message
-    # def set_f_locals(self, f_locals):
-    #     self.f_locals = f_locals
 
 
 comm_handler = DebuggerCommHandler()
@@ -180,17 +166,12 @@ def trace_function(frame, event, arg):
                 'function_name': frame.f_code.co_name,
                 'lineno': frame.f_lineno
             }
-            _trace('Calling put_to_trace_queue()')  # DEBUG
             comm_handler.put_to_trace_queue((frame_message, frame.f_locals))
-            # TODO(cais): Remove.
-            # comm_handler.set_f_locals(frame.f_locals)
 
             _trace('Pausing: event=%s, lineno=%d' %
                 (event, frame.f_lineno))  # DEBUG
             sys.settrace(trace_function)  # TODO(cais) Is this necessary?
             comm_handler.get_from_client_queue()
-    #         input()
-    #         sys.settrace(trace_function)
 
             return trace_function
     else:
