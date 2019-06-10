@@ -62,12 +62,12 @@ class CommHandler {
       if ('code_html' in data && this.codeHtmlCallback != null) {
         this.codeHtmlCallback(data['code_html'] as string);
 
-        // This is the initial connect. Automatically step
+        // This is the initial connect. Automatically step once.
+        // TODO(cais): Decide.
+        // this.sendMessage({command: 'step'});
       } else if ('event' in data && this.frameDataCallback != null) {
+        console.log('Python frame data:', data);  // DEBUG
         this.frameDataCallback(data as DebuggerFrameData);
-      } else if ('local_names' in data) {
-        // TODO(cais): Hook up with UI logic.
-        // console.log('Local names:', data);  // DEBUG
       } else if ('dtype' in data) {
         if (this.tensorValueCallback != null) {
           this.tensorValueCallback(data as TensorWireFormat);
@@ -287,10 +287,6 @@ function main() {
 
   // Open the debugger's underlying comm.
   comm.openComm();
-
-  // Initial step, so that the debugger can stop at the first line
-  // of the cell.
-  comm.sendMessage({command: 'step'});
 
   stepButton.addEventListener('click', () => {
     comm.sendMessage({command: 'step'});
