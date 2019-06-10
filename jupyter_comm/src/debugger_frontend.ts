@@ -9,7 +9,7 @@ declare const Jupyter: JupyterClass;
 console.log('In debugger_frontend.ts');  // DEBUG
 
 export interface DebuggerCommand {
-  command: 'step' | 'get_tensor_value';
+  command: 'step' | 'step-over' | 'get_tensor_value';
 
   tensor_name?: string;
 }
@@ -246,6 +246,8 @@ function main() {
   let debuggerComponent: DebuggerCompoenent;
   const stepButton =
       document.getElementById('step-button') as HTMLButtonElement;
+  const stepOverButton =
+      document.getElementById('step-over-button') as HTMLButtonElement;
 
   // The comm objec that underlies the debugger.
   // TODO(cais): Handle the case in which the debugger magic is executed
@@ -289,6 +291,10 @@ function main() {
   comm.openComm();
 
   stepButton.addEventListener('click', () => {
+    comm.sendMessage({command: 'step'});
+  });
+
+  stepOverButton.addEventListener('click', () => {
     comm.sendMessage({command: 'step'});
   });
 }

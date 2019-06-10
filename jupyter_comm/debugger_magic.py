@@ -88,6 +88,7 @@ class DebuggerCommHandler(object):
             data = msg['content']['data']
             command = data['command']
             if command == 'step':
+                debugger_state['next_break'] = 'step'
                 if self.step_count == 0:
                     # Consume the initial debugger frame.
                     comm_handler.get_from_trace_queue_and_send_response()
@@ -95,6 +96,8 @@ class DebuggerCommHandler(object):
                 self.step_count += 1
                 self.client_queue.put('step')
                 self.get_from_trace_queue_and_send_response()
+            elif command == 'step-over':
+                debugger_state['next_break'] = 'step-over'
             elif command == 'get_tensor_value':
                 # TODO(cais): Better error handling.
                 tensor_name = data['tensor_name']
@@ -140,30 +143,39 @@ debugger_data = {
 
 # Debugger state control.
 debugger_state = {
-    # 'any'  - Used for "step in" action.
-    # 'over' - Step until the next 'line' event of exactly the same stack
-    #          or a shorter stack.
-    'next_pause': 'any',  # 'any' | 'over'
+    # 'step'      - Used for "step in" action.
+    # 'step-over' - Step until the next 'line' event of exactly the same stack
+    #               or a shorter stack.
+    'next_break': 'step',  # 'step' | 'step-over'
+    'prev_stack': [],
+    # 'current_stack': []
     'current_stack': []
 }
+
 
 def trace_function(frame, event, arg):
     # TODO(cais): Handle event == 'exception'.
 
     if event == 'call':
+        debugger_state['prev_stack'] = copy.copy(
+            debugger_state['current_stack'])
         debugger_state['current_stack'].append(frame.f_code.co_name)
     elif event == 'return':
+        debugger_state['prev_stack'] = copy.copy(
+            debugger_state['current_stack'])
         debugger_state['current_stack'].pop()
 
     if frame.f_code.co_name == 'target_func':
         if event == 'call':
+            debugger_state['prev_stack'] = copy.copy(
+                debugger_state['current_stack'])
             debugger_state['current_stack'].pop()
         return
     # elif (event == 'line' and
     elif frame.f_code.co_filename.startswith('<ipython-input-'):
         if event in ('call', 'return'):
             return trace_function
-        else:
+        else:  # event == 'line'
             # sys.settrace(None)  # TODO(cais) Is this necessary?
             try:
                 source_line = debugger_data['code_lines'][frame.f_lineno - 1]
@@ -183,14 +195,19 @@ def trace_function(frame, event, arg):
             }
             comm_handler.put_to_trace_queue((frame_message, frame.f_locals))
 
-            _trace('Pausing: stack=%s, event=%s, lineno=%d' %
-                   (debugger_state['current_stack'], event,
-                    frame.f_lineno))  # DEBUG
+            _trace(
+                'Pausing: prev stack=%s, current stack=%s, event=%s, '
+                'lineno=%d' % (
+                    debugger_state['prev_stack'],
+                    debugger_state['current_stack'],
+                    event, frame.f_lineno))  # DEBUG
             comm_handler.get_from_client_queue()
 
             return trace_function
     else:
         if event == 'call':
+            debugger_state['prev_stack'] = copy.copy(
+                debugger_state['current_stack'])
             debugger_state['current_stack'].pop()
         return
 
