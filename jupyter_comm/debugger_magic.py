@@ -139,8 +139,6 @@ debugger_data = {
 
 
 def trace_function(frame, event, arg):
-    with open('/tmp/debugger2.log', 'at') as f:
-        f.write('%s - %s\n' % (frame.f_code.co_filename, frame.f_code.co_name))
 
     if frame.f_code.co_name == 'target_func':
         return None
@@ -149,7 +147,7 @@ def trace_function(frame, event, arg):
         if event in ('call', 'return'):
             return trace_function
         else:
-            sys.settrace(None)  # TODO(cais) Is this necessary?
+            # sys.settrace(None)  # TODO(cais) Is this necessary?
             try:
                 source_line = debugger_data['code_lines'][frame.f_lineno - 1]
             except:
@@ -169,8 +167,7 @@ def trace_function(frame, event, arg):
             comm_handler.put_to_trace_queue((frame_message, frame.f_locals))
 
             _trace('Pausing: event=%s, lineno=%d' %
-                (event, frame.f_lineno))  # DEBUG
-            sys.settrace(trace_function)  # TODO(cais) Is this necessary?
+                   (event, frame.f_lineno))  # DEBUG
             comm_handler.get_from_client_queue()
 
             return trace_function
@@ -192,25 +189,31 @@ asyncio.set_event_loop_policy(MyEventLoopPolicy())
 def debugger_magic(line, cell):
     "my debugger jupyter magic"
 
-
     with open(os.path.join(os.path.dirname(__file__),
               'debugger.html'), 'rt') as f:
       debugger_html = f.read()
     display.display(display.HTML(debugger_html))
     display.display(display.Javascript(filename='dist/debugger_frontend.js'))
 
-    revised_code = cell
     debugger_data['code_lines'] = cell.split('\n')
 
     # Use Pygment lexer and formatter
     code_html = highlight(
         cell, PythonLexer(),
         HtmlFormatter(lineno='inline', nowrap=True))
+
+    # Append leading empty lines.
+    for i in range(len(debugger_data['code_lines'])):
+        if debugger_data['code_lines'][i] == '':
+            code_html = '\n' + code_html
+        else:
+            break
+
     debugger_data['code_html'] = code_html
 
     def thread_target():
         sys.settrace(trace_function)
-        IPython.get_ipython().kernel.do_execute(revised_code, False, allow_stdin=True)
+        IPython.get_ipython().kernel.do_execute(cell, False, allow_stdin=True)
         sys.settrace(None)
 
     thread = threading.Thread(target=thread_target)

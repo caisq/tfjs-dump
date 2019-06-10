@@ -30,7 +30,8 @@ export interface DebuggerFrameData {
   locals_summary?: VariableSummary[];
 }
 
-export type CodeHtmlCallback = (htmlText: string) => Promise<void>|void;
+export type CodeLinesAndHtmlCallback =
+    (codeLines: string[], htmlText: string) => Promise<void>|void;
 export type FrameDataCallback =
     (frameData: DebuggerFrameData) => Promise<void>|void;
 export type TensorValueCalblack =
@@ -41,7 +42,7 @@ export type TensorValueCalblack =
 
 class CommHandler {
   private comm: any;
-  private codeHtmlCallback: CodeHtmlCallback|null = null;
+  private codeLinesAndHtmlCallback: CodeLinesAndHtmlCallback|null = null;
   private frameDataCallback: FrameDataCallback|null = null;
   private tensorValueCallback: TensorValueCalblack|null = null;
 
@@ -59,21 +60,16 @@ class CommHandler {
     this.comm.on_msg((msg: JupyterCommMessage) => {
       let data = msg.content.data;
       // console.log('In on_msg(): data = ', data);  // DEBUG
-      if ('code_html' in data && this.codeHtmlCallback != null) {
-        this.codeHtmlCallback(data['code_html'] as string);
+      if ('code_html' in data && this.codeLinesAndHtmlCallback != null) {
+        this.codeLinesAndHtmlCallback(
+            data['code_lines'] as string[], data['code_html'] as string);
 
-        // This is the initial connect. Automatically step once.
-        // TODO(cais): Decide.
-        // this.sendMessage({command: 'step'});
       } else if ('event' in data && this.frameDataCallback != null) {
-        console.log('Python frame data:', data);  // DEBUG
         this.frameDataCallback(data as DebuggerFrameData);
       } else if ('dtype' in data) {
         if (this.tensorValueCallback != null) {
           this.tensorValueCallback(data as TensorWireFormat);
         }
-        // console.log('tensor wire format:', data);  // DEBUG
-        // tensorCache[(data as TensorWireFormat).name] = data as TensorWireFormat;
       }
     });
   }
@@ -86,8 +82,8 @@ class CommHandler {
     this.frameDataCallback = callback;
   }
 
-  registerCodeLinesCallback(callback: CodeHtmlCallback) {
-    this.codeHtmlCallback = callback;
+  registerCodeLinesAndHtmlCallback(callback: CodeLinesAndHtmlCallback) {
+    this.codeLinesAndHtmlCallback = callback;
   }
 
   registerTensorValueCallback(callback: TensorValueCalblack) {
@@ -97,6 +93,8 @@ class CommHandler {
 
 // TODO(cais): Refactor into a separate file.
 class DebuggerCompoenent {
+  // private codeOffsetLines: number|null = null;
+
   private readonly codeDiv: HTMLDivElement;
   private readonly watchDiv: HTMLDivElement;
   private lineNum2Gutter: {[lineno: number]: HTMLDivElement} = {};
@@ -255,19 +253,21 @@ function main() {
   const comm = new CommHandler();
 
   // Register the callback for code lines.
-  comm.registerCodeLinesCallback((codeHtml: string) => {
-    componentDiv.textContent = '';
-    async function requestTensorFunction(name: string) {
-      comm.sendMessage({
-        command: 'get_tensor_value',
-        tensor_name: name
-      });
-    }
+  comm.registerCodeLinesAndHtmlCallback(
+      (codeLines: string[], codeHtml: string) => {
+          console.log(`Received ${codeLines.length} line(s) of code`);
+          componentDiv.textContent = '';
+          async function requestTensorFunction(name: string) {
+            comm.sendMessage({
+              command: 'get_tensor_value',
+              tensor_name: name
+            });
+          }
 
-    debuggerComponent = new DebuggerCompoenent(
-        componentDiv, codeHtml, requestTensorFunction);
-    debuggerComponent.renderCodeLines();
-  });
+          debuggerComponent = new DebuggerCompoenent(
+              componentDiv, codeHtml, requestTensorFunction);
+          debuggerComponent.renderCodeLines();
+      });
 
   // Register the callback for Python debugger frames.
   comm.registerFrameDataCallback((frameData: DebuggerFrameData) => {
