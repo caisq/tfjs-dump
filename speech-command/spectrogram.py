@@ -39,6 +39,8 @@ def waveform_to_spectrogram(waveform, n_fft, n_fft_out):
     else:
       x_seg = waveform[n_fft * (n_seg - 1) : n_fft * (n_seg + 1)]
     x_seg *= window
+    # NOTE(cais): This should fully replicate WebAudio AnalyzerNode's
+    # GetFloatFrequencyData(), up to a added constant.
     spectrum = 20 * np.log10(
         np.abs(np.fft.fft(x_seg)).astype(np.float32) / n_fft)
     spectra.append(spectrum[:n_fft_out])
