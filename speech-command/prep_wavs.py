@@ -14,9 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 
-# from __future__ import absolute_import
-# from __future__ import division
-# from __future__ import print_function
+from __future__ import division
+from __future__ import print_function
 
 import argparse
 import glob
@@ -27,6 +26,8 @@ import struct
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import resample
+
+import spectrogram
 
 
 _BACKGROUND_NOISE_DIR = '_background_noise_'
@@ -165,22 +166,23 @@ def get_filling_snippet(x, fill_len, fill_type):
 def convert(in_wav_path,
             target_fs,
             frame_size,
-            out_data_path,
+            n_fft_out,
             match_len=None,
             multi_splits=False,
             do_filling=True):
-  '''Convert an input wav file to an output data file.
+  '''Convert an input wav file to a spectrogram.
 
   The data file consists of the resampled and truncated PCM samples.
+  Then short-time Fourier transform (STFT) is applied on the resampled
+  waveform.
 
   Args:
     in_wav_path: Input wav file path.
     target_fs: Target sampling frequency.
     frame_size: Frame size in # of samples. The waveform will be
       truncated to an integer multiple length of `frame_size`.
-    out_data_path: Output data file path. In the case of
-      `multi_splits == True`, it is used as the path prefix and
-      suffix such as '_split1' and '_split2" will be added.
+    n_fft_out: Truncation length of every spectrum of the spectrogram.
+      Must be <= frame_size.
     match_len: Expected output length in number of audio samples.
     multi_splits: Perform multiple splits. For example if the input
       waveform has a length of 10k and `match_len` equals 4k, then
@@ -190,20 +192,24 @@ def convert(in_wav_path,
       shorter than match_len.
 
   Returns:
-    Length (in # of samples) of the waveform in the file at
-      `out_data_path`.
+    A tuple of two items:
+      - The spectrogram(s) as a list of  `numpy.ndarray` of dtype `float32` and
+        shape `(num_frames, n_fft_out)`.
+      - The length of the waveform that goes into calculating the spectrogram,
+        this is equal to `frame_size * num_frames`
   '''
-  # print('convert(): out_data_path = %s' % out_data_path)  # DEBUG
+  assert frame_size > 0
+  assert n_fft_out > 0
+  assert n_fft_out <= frame_size
+
   waveform = load_and_normalize_waveform(in_wav_path,
                                          target_fs,
                                          frame_size)
   out_waveforms = []
-  # print('match_len = %s' % match_len)  # DEBUG
   if match_len is None:
     # Extract the entire waveform from the single .wav file.
     out_waveforms.append(waveform)
   else:
-    # print(len(waveform))  # DEBUG
     if len(waveform) > match_len:
       if not multi_splits:
         out_waveforms.append(waveform[:match_len])
@@ -239,21 +245,10 @@ def convert(in_wav_path,
       # I.e., len(waveform) == match_len
       out_waveforms.append(waveform)
 
-  out_file_paths = []
-  if len(out_waveforms) == 1:
-    # print('out_waveforms len == 1')  # DEBUG
-    out_file_paths.append(out_data_path)
-  else:
-    file_name, ext_name = os.path.splitext(out_data_path)
-    for i in range(len(out_waveforms)):
-      out_file_paths.append('%s_split%d%s' % (file_name, i, ext_name))
-  # print('out_file_paths = %s' % out_file_paths)  # DEBUG
-
-  for out_path, out_waveform in zip(out_file_paths, out_waveforms):
-    with open(out_path, 'wb') as out_file:
-      out_file.write(struct.pack('f' * len(out_waveform), *out_waveform))
-
-  return len(out_waveforms[0]) if out_waveforms else -1
+  spectrograms = [
+      spectrogram.waveform_to_spectrogram(waveform, frame_size, n_fft_out)
+      for waveform in out_waveforms]
+  return spectrograms, len(spectrograms[0]) * frame_size
 
 
 def convert_wav_files_in_dir(input_dir,
@@ -261,6 +256,7 @@ def convert_wav_files_in_dir(input_dir,
                              recordings_per_subfolder,
                              target_fs,
                              frame_size,
+                             n_fft_out,
                              match_len=None,
                              test_split=None,
                              test_output_dir=None,
@@ -276,6 +272,8 @@ def convert_wav_files_in_dir(input_dir,
       under input_dir.
     target_fs: Target sampling frequency.
     frame_size: Frame size.
+    n_fft_out: Truncation length for each spectrum of the spectrogram. Must be
+      >0 and <= frame_size.
     match_len: Only output the recordings with the exact length (optional).
     test_split: Fraction of wav files from input_dir to go into test_output_dir
       as test data. If specified, test_output_dir must also be specified, else
@@ -298,6 +296,10 @@ def convert_wav_files_in_dir(input_dir,
     - The number of training examples.
     - The number of test examples.
   '''
+  assert frame_size > 0
+  assert n_fft_out > 0
+  assert n_fft_out <= frame_size
+
   if os.path.isfile(output_dir):
     raise ValueError(
         'If input_wav_path is a directory, '
@@ -327,9 +329,10 @@ def convert_wav_files_in_dir(input_dir,
     train_wav_paths = [in_wav_paths[i] for i in indices[:num_train]]
     test_wav_paths = [in_wav_paths[i] for i in indices[num_train:]]
 
-  num_train_examples = 0
-  num_test_examples = 0
+  train_spectrograms = []
+  test_spectrograms = []
   for n in range(2):
+    spectrograms = []
     if n == 0:
       split_in_path = train_wav_paths
       split_out_path = output_dir
@@ -340,30 +343,29 @@ def convert_wav_files_in_dir(input_dir,
       split_out_path = test_output_dir
 
     for i, in_path in enumerate(split_in_path):
-      subfolder = os.path.join(
-          split_out_path,
-          '%d' % int(math.floor(i / recordings_per_subfolder)))
-      if not os.path.exists(subfolder):
-        os.makedirs(subfolder)
       file_basename = os.path.basename(in_path)
       filename, extension_name = os.path.splitext(file_basename)
       output_basename = (
           filename + '.dat' if extension_name.lower() == '.wav' else filename)
-      out_path = os.path.join(subfolder, output_basename)
-      converted_len = convert(
-          in_path, target_fs, frame_size, out_path, match_len=match_len,
-          multi_splits=multi_splits, do_filling=do_filling)
-      if (match_len is not None and match_len != converted_len
-          and os.path.exists(out_path)):
-        print('  Skipped %s due to length mismatch (%d != %d)' % (
-            in_path, converted_len, match_len))
-        os.remove(out_path)
+      spectrograms, converted_len = convert(
+          in_path, target_fs, frame_size, n_fft_out,
+          match_len=match_len, multi_splits=multi_splits, do_filling=do_filling)
+      if match_len is not None and match_len != converted_len:
+        print('  Skipped %s due to length mismatch (%d != %d)' %
+              (in_path, converted_len, match_len))
       if n == 0:
-        num_train_examples += 1
+        train_spectrograms.extend(spectrograms)
       else:
-        num_test_examples += 1
+        test_spectrograms.extend(spectrograms)
 
-  return num_train_examples, num_test_examples
+  train_out_path = os.path.join(output_dir, 'spectrograms.npy')
+  np.save(train_out_path, np.stack(train_spectrograms))
+  print("%s: train split--> %s" % (input_dir, train_out_path))
+  if test_split:
+    test_out_path = os.path.join(test_output_dir, 'spectrograms.npy')
+    np.save(test_out_path, np.stack(test_spectrograms))
+    print("%s: test split--> %s" % (input_dir, test_out_path))
+  return len(train_spectrograms), len(test_spectrograms)
 
 
 def main():
@@ -428,7 +430,7 @@ def main():
       num_train_examples, num_test_examples = convert_wav_files_in_dir(
           word_input_dir, train_out_dir,
           FLAGS.recordings_per_subfolder, FLAGS.target_fs,
-          FLAGS.frame_size, FLAGS.match_len,
+          FLAGS.frame_size, FLAGS.n_fft_out, FLAGS.match_len,
           FLAGS.test_split, test_out_dir,
           multi_splits=multi_splits,
           do_filling=(not FLAGS.no_filling))
@@ -438,8 +440,7 @@ def main():
     convert(FLAGS.input_wav_path,
             FLAGS.target_fs,
             FLAGS.frame_size,
-            FLAGS.output_data_path)
-    print('Processed input wav file')  # DEBUG
+            FLAGS.n_fft_out)
   else:
     raise ValueError('Nonexistent input path %s' % FLAGS.input_wav_path)
 
@@ -513,6 +514,9 @@ if __name__ == '__main__':
   parser.add_argument(
       '--frame_size', type=int, default=1024,
       help='Frame size at target frequency.')
+  parser.add_argument(
+      '--n_fft_out', type=int, default=232,
+      help='Truncation length for each spectrum of the spectrogram.')
   parser.add_argument(
       '--recordings_per_subfolder', type=int, default=300,
       help='Number of recordings to store in every subfolder under '

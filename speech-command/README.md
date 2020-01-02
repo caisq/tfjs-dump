@@ -16,9 +16,9 @@ For example, suppose you have downloaded and extracted the raw speech command
 dataset at 'path/to/speech_command_data'. Use the following command:
 
 ```sh
-python prep_wav.py \
+python prep_wavs.py \
     --words down,eight,five,four,go,left,nine,no,one,right,seven,six,stop,three,two,up,yes,zero \
-    --unknown words bed,bird,cat,dog,happy,house,marvin,sheila,wow \
+    --unknown_words bed,bird,cat,dog,happy,house,marvin,sheila,wow \
     --include_noise \
     path/to/speech_command_data \
     path/to/converted/data
